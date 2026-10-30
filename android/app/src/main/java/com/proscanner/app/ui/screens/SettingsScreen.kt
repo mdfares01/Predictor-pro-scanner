@@ -303,7 +303,7 @@ fun SettingsScreen(
                                     singleLine = true,
                                     colors = OutlinedTextFieldDefaults.colors(
                                         focusedBorderColor = NeonGreen,
-                                        unfocusedBorderColor = BorderSubtle,
+                                        unfocusedBorderColor = Color(0xFF1E2830),
                                         focusedTextColor = TextPrimary,
                                         unfocusedTextColor = TextPrimary
                                     )
