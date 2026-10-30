@@ -1,0 +1,83 @@
+<resources>
+    <string name="app_name">Floating PRO Scanner</string>
+    <string name="tagline">AI Powered Trading Analysis</string>
+    <string name="sub_tagline">Smart • Fast • Accurate</string>
+    <string name="initializing">Initializing…</string>
+    
+    <!-- Home Dashboard -->
+    <string name="gemini_ai">Gemini AI</string>
+    <string name="secure_backend">Secure Backend</string>
+    <string name="connected">Connected</string>
+    <string name="offline">Offline</string>
+    <string name="floating_button">Floating Button</string>
+    <string name="floating_button_desc">Enable to show PRO button over other apps</string>
+    <string name="screen_capture">Screen Capture</string>
+    <string name="screen_capture_desc">Allow to capture screen for analysis</string>
+    <string name="active">Active</string>
+    <string name="not_active">Not Active</string>
+    <string name="granted">Granted</string>
+    <string name="not_granted">Not Granted</string>
+    <string name="start_scanner">START SCANNER</string>
+    <string name="recent_analysis">Recent Analysis</string>
+    <string name="view_all">View All</string>
+    
+    <!-- Navigation -->
+    <string name="nav_home">Home</string>
+    <string name="nav_history">History</string>
+    <string name="nav_settings">Settings</string>
+    
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="permissions_section">Permissions</string>
+    <string name="perm_overlay_title">Display over other apps</string>
+    <string name="perm_overlay_desc">Required for floating button</string>
+    <string name="perm_capture_title">Screen capture</string>
+    <string name="perm_capture_desc">Required for analysis</string>
+    <string name="grant">Grant</string>
+    <string name="ai_backend_section">AI &amp; Backend</string>
+    <string name="gemini_connection">Gemini AI Connection</string>
+    <string name="backend_server">Backend Server</string>
+    <string name="app_preferences">App Preferences</string>
+    <string name="button_style">Floating button style</string>
+    <string name="neon_green">Neon Green</string>
+    <string name="notification">Notification</string>
+    <string name="language">Language</string>
+    <string name="about_section">About</string>
+    <string name="version_text">Floating PRO Scanner v1.0.0</string>
+
+    <!-- Floating Panel & Scanner -->
+    <string name="pro_scanner">PRO SCANNER</string>
+    <string name="tap_to_open">Tap to open</string>
+    <string name="scan">Scan</string>
+    <string name="stop">STOP</string>
+    <string name="close">Close</string>
+    <string name="scanning_status">SCANNING…</string>
+    <string name="scanning_desc">Analyzing chart patterns, trend, support &amp; resistance…</string>
+    <string name="powered_by_gemini">Powered by Gemini AI</string>
+
+    <!-- Results -->
+    <string name="signal_ready">SIGNAL READY</string>
+    <string name="analysis_completed">Analysis completed</string>
+    <string name="signal_up">UP</string>
+    <string name="signal_down">DOWN</string>
+    <string name="signal_no_trade">NO TRADE</string>
+    <string name="confidence_label">Confidence: %1$d%%</string>
+    <string name="analysis_summary">Analysis Summary</string>
+    <string name="risks_title">Risks</string>
+    <string name="key_reason">Key reason: %1$s</string>
+    <string name="evidence_title">Visible Evidence</string>
+    <string name="uncertainty_title">Uncertainties &amp; Missing Data</string>
+    <string name="disclaimer_short">This is an AI analysis based on screenshot only. Not financial advice.</string>
+    <string name="disclaimer_long">Always use your own analysis. This is not financial advice.</string>
+
+    <!-- Errors -->
+    <string name="error_permission_title">Permission Denied</string>
+    <string name="error_permission_desc">Screen capture or overlay permission is required to analyze trading charts.</string>
+    <string name="error_no_chart_title">No Chart Detected</string>
+    <string name="error_no_chart_desc">Could not clearly detect candlestick chart or market timeframe. Please ensure the chart is fully visible.</string>
+    <string name="error_network_title">Network Failure</string>
+    <string name="error_network_desc">Unable to reach the AI backend server. Please verify your internet connection.</string>
+    <string name="error_ai_title">AI Analysis Error</string>
+    <string name="error_ai_desc">The AI vision model encountered an issue parsing this screenshot. Please retry with a clear view.</string>
+    <string name="retry">Retry</string>
+</resources>

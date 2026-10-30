@@ -1,0 +1,47 @@
+name: Build Floating PRO Scanner APK
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch: # Allows manual 1-click build from GitHub web or mobile UI
+
+jobs:
+  build:
+    name: Build Android Debug APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Make Gradle Wrapper Executable
+        run: chmod +x android/gradlew
+
+      - name: Build Debug APK with Gradle
+        working-directory: android
+        run: |
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Verify APK Generated
+        run: |
+          ls -la android/app/build/outputs/apk/debug/
+          test -f android/app/build/outputs/apk/debug/app-debug.apk || (echo "APK not found!" && exit 1)
+
+      - name: Upload Debug APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FloatingPROScanner-v1.0.0-debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30

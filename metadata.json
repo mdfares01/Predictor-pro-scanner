@@ -1,0 +1,6 @@
+{
+  "name": "Floating PRO Scanner",
+  "description": "Native Android AI Trading Chart Scanner in Kotlin & Jetpack Compose with floating bubble overlay and server-side Gemini vision analysis.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

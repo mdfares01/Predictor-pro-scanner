@@ -1,0 +1,83 @@
+<resources>
+    <string name="app_name">ফ্লোটিং প্রো স্ক্যানার</string>
+    <string name="tagline">এআই চালিত ট্রেডিং বিশ্লেষণ</string>
+    <string name="sub_tagline">স্মার্ট • দ্রুত • নির্ভুল</string>
+    <string name="initializing">শুরু হচ্ছে…</string>
+    
+    <!-- Home Dashboard -->
+    <string name="gemini_ai">জেমিনি এআই</string>
+    <string name="secure_backend">নিরাপদ ব্যাকএন্ড</string>
+    <string name="connected">সংযুক্ত</string>
+    <string name="offline">অফলাইন</string>
+    <string name="floating_button">ফ্লোটিং বোতাম</string>
+    <string name="floating_button_desc">অন্য অ্যাপের উপরে প্রো বাটন চালু করুন</string>
+    <string name="screen_capture">স্ক্রিন ক্যাপচার</string>
+    <string name="screen_capture_desc">চার্ট বিশ্লেষণের জন্য স্ক্রিন ক্যাপচারের অনুমতি দিন</string>
+    <string name="active">সক্রিয়</string>
+    <string name="not_active">নিষ্ক্রিয়</string>
+    <string name="granted">অনুমোদিত</string>
+    <string name="not_granted">অনুমতি নেই</string>
+    <string name="start_scanner">স্ক্যানার চালু করুন</string>
+    <string name="recent_analysis">সাম্প্রতিক বিশ্লেষণ</string>
+    <string name="view_all">সবগুলো দেখুন</string>
+    
+    <!-- Navigation -->
+    <string name="nav_home">হোম</string>
+    <string name="nav_history">ইতিহাস</string>
+    <string name="nav_settings">সেটিংস</string>
+    
+    <!-- Settings -->
+    <string name="settings_title">সেটিংস</string>
+    <string name="permissions_section">অনুমতিসমূহ</string>
+    <string name="perm_overlay_title">অন্যান্য অ্যাপের উপরে দেখান</string>
+    <string name="perm_overlay_desc">ফ্লোটিং বাটনটির জন্য প্রয়োজনীয়</string>
+    <string name="perm_capture_title">স্ক্রিন ক্যাপচার</string>
+    <string name="perm_capture_desc">চার্ট বিশ্লেষণের জন্য আবশ্যক</string>
+    <string name="grant">অনুমতি দিন</string>
+    <string name="ai_backend_section">এআই ও ব্যাকএন্ড</string>
+    <string name="gemini_connection">জেমিনি এআই সংযোগ</string>
+    <string name="backend_server">ব্যাকএন্ড সার্ভার</string>
+    <string name="app_preferences">অ্যাপ পছন্দসমূহ</string>
+    <string name="button_style">ফ্লোটিং বাটন স্টাইল</string>
+    <string name="neon_green">নিয়ন গ্রিন</string>
+    <string name="notification">বিজ্ঞপ্তি</string>
+    <string name="language">ভাষা (Language)</string>
+    <string name="about_section">সম্পর্কে</string>
+    <string name="version_text">ফ্লোটিং প্রো স্ক্যানার v1.0.0</string>
+
+    <!-- Floating Panel & Scanner -->
+    <string name="pro_scanner">প্রো স্ক্যানার</string>
+    <string name="tap_to_open">খুলতে ট্যাপ করুন</string>
+    <string name="scan">স্ক্যান</string>
+    <string name="stop">বন্ধ করুন</string>
+    <string name="close">বন্ধ</string>
+    <string name="scanning_status">স্ক্যান চলছে…</string>
+    <string name="scanning_desc">চার্ট প্যাটার্ন, ট্রেন্ড, সাপোর্ট ও রেজিস্ট্যান্স বিশ্লেষণ হচ্ছে…</string>
+    <string name="powered_by_gemini">জেমিনি এআই দ্বারা চালিত</string>
+
+    <!-- Results -->
+    <string name="signal_ready">সিগন্যাল প্রস্তুত</string>
+    <string name="analysis_completed">বিশ্লেষণ সম্পন্ন হয়েছে</string>
+    <string name="signal_up">UP (উর্ধ্বমুখী)</string>
+    <string name="signal_down">DOWN (নিম্নমুখী)</string>
+    <string name="signal_no_trade">NO TRADE (ট্রেড নেই)</string>
+    <string name="confidence_label">সম্ভাব্যতা: %1$d%%</string>
+    <string name="analysis_summary">বিশ্লেষণের সারসংক্ষেপ</string>
+    <string name="risks_title">ঝুঁকিসমূহ</string>
+    <string name="key_reason">মূল কারণ: %1$s</string>
+    <string name="evidence_title">দৃশ্যমান পর্যবেক্ষণ ও প্রমাণ</string>
+    <string name="uncertainty_title">অনিশ্চয়তা ও অনুপস্থিত তথ্য</string>
+    <string name="disclaimer_short">এটি শুধুমাত্র স্ক্রিনশটের উপর ভিত্তি করে এআই বিশ্লেষণ। আর্থিক পরামর্শ নয়।</string>
+    <string name="disclaimer_long">সর্বদা আপনার নিজস্ব বিশ্লেষণ ব্যবহার করুন। এটি আর্থিক পরামর্শ নয়।</string>
+
+    <!-- Errors -->
+    <string name="error_permission_title">অনুমতি বাতিল হয়েছে</string>
+    <string name="error_permission_desc">ট্রেডিং চার্ট বিশ্লেষণের জন্য স্ক্রিন ক্যাপচার ও ওভারলে অনুমতি প্রয়োজন।</string>
+    <string name="error_no_chart_title">কোন চার্ট সনাক্ত হয়নি</string>
+    <string name="error_no_chart_desc">ক্যান্ডেলস্টিক চার্ট স্পষ্টভাবে চিহ্নিত করা যায়নি। অনুগ্রহ করে সম্পূর্ণ চার্ট দৃশ্যমান রাখুন।</string>
+    <string name="error_network_title">নেটওয়ার্ক ত্রুটি</string>
+    <string name="error_network_desc">এআই ব্যাকএন্ড সার্ভারের সাথে সংযোগ করা সম্ভব হয়নি। ইন্টারনেট সংযোগ যাচাই করুন।</string>
+    <string name="error_ai_title">এআই বিশ্লেষণ ত্রুটি</string>
+    <string name="error_ai_desc">স্ক্রিনশট বিশ্লেষণের সময় এআই মডেলে সমস্যা দেখা দিয়েছে। পরিষ্কার দৃশ্য সহ পুনরায় চেষ্টা করুন।</string>
+    <string name="retry">পুনরায় চেষ্টা করুন</string>
+</resources>
