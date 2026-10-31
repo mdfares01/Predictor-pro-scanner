@@ -80,5 +80,7 @@
     <string name="error_ai_title">এআই বিশ্লেষণ ত্রুটি</string>
     <string name="error_ai_desc">স্ক্রিনশট বিশ্লেষণের সময় এআই মডেলে সমস্যা দেখা দিয়েছে। পরিষ্কার দৃশ্য সহ পুনরায় চেষ্টা করুন।</string>
     <string name="error_fgs_start_failed">স্ক্রিন ক্যাপচারের জন্য ফোরগ্রাউন্ড সার্ভিস চালু করা যায়নি।</string>
+    <string name="error_unknown_title">অপ্রত্যাশিত ত্রুটি</string>
+    <string name="error_unknown_desc">স্ক্যানার সার্ভিস চালু করতে সমস্যা হয়েছে। অনুগ্রহ করে অনুমতি যাচাই করে আবার চেষ্টা করুন।</string>
     <string name="retry">পুনরায় চেষ্টা করুন</string>
 </resources>

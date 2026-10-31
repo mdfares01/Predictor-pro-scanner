@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.ImageNotSupported
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -46,7 +47,8 @@ enum class ErrorType {
     PERMISSION_DENIED,
     NO_CHART_DETECTED,
     NETWORK_FAILURE,
-    AI_FAILURE
+    AI_FAILURE,
+    UNKNOWN
 }
 
 @Composable
@@ -78,6 +80,12 @@ fun FriendlyErrorScreen(
             Icons.Default.AutoAwesome,
             stringResource(R.string.error_ai_title),
             stringResource(R.string.error_ai_desc),
+            stringResource(R.string.retry)
+        )
+        ErrorType.UNKNOWN -> Quad(
+            Icons.Default.Warning,
+            stringResource(R.string.error_unknown_title),
+            stringResource(R.string.error_unknown_desc),
             stringResource(R.string.retry)
         )
     }

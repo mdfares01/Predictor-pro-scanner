@@ -109,9 +109,36 @@ async function runVerification() {
       'Localization',
       'FGS startup failure string verified in both files'
     );
+    assert(
+      en.includes('error_unknown_title') && bn.includes('error_unknown_title') &&
+      en.includes('error_unknown_desc') && bn.includes('error_unknown_desc'),
+      'error_unknown_title and error_unknown_desc localized in English & Bangla',
+      'Localization',
+      'Unexpected error string resources verified in both files'
+    );
   }
 
-  // Test 3.1: Kotlin Data Model Integrity
+  // Test 3.1: Kotlin ErrorType and Model Integrity
+  const errorScreensPath = path.join(rootDir, 'android/app/src/main/java/com/proscanner/app/ui/screens/ErrorScreens.kt');
+  const mainActivityPath = path.join(rootDir, 'android/app/src/main/java/com/proscanner/app/MainActivity.kt');
+  if (fs.existsSync(errorScreensPath) && fs.existsSync(mainActivityPath)) {
+    const errorScreensContent = fs.readFileSync(errorScreensPath, 'utf-8');
+    const mainActivityContent = fs.readFileSync(mainActivityPath, 'utf-8');
+    assert(
+      errorScreensContent.includes('UNKNOWN') &&
+      errorScreensContent.includes('ErrorType.UNKNOWN -> Quad'),
+      'ErrorType.UNKNOWN enum constant and Quad handler defined',
+      'Error Handling',
+      'Resolves MainActivity line 162 reference with full Compose UI branch'
+    );
+    assert(
+      mainActivityContent.includes('viewModel.showError(ErrorType.UNKNOWN)'),
+      'MainActivity catches service start failure and invokes ErrorType.UNKNOWN',
+      'Error Handling',
+      'Failsafe error reporting on overlay launch failure'
+    );
+  }
+
   const modelPath = path.join(rootDir, 'android/app/src/main/java/com/proscanner/app/data/model/ScanResult.kt');
   if (fs.existsSync(modelPath)) {
     const modelContent = fs.readFileSync(modelPath, 'utf-8');

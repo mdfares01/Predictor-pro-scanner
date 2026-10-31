@@ -80,5 +80,7 @@
     <string name="error_ai_title">AI Analysis Error</string>
     <string name="error_ai_desc">The AI vision model encountered an issue parsing this screenshot. Please retry with a clear view.</string>
     <string name="error_fgs_start_failed">Foreground service could not be started for screen capture.</string>
+    <string name="error_unknown_title">Unexpected Error</string>
+    <string name="error_unknown_desc">Failed to start scanner service. Please verify permissions and try again.</string>
     <string name="retry">Retry</string>
 </resources>
