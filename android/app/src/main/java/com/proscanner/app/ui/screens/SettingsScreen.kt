@@ -54,6 +54,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.proscanner.app.R
+import com.proscanner.app.ui.theme.BorderSubtle
 import com.proscanner.app.ui.theme.CardBackground
 import com.proscanner.app.ui.theme.DarkBackground
 import com.proscanner.app.ui.theme.NeonGreen

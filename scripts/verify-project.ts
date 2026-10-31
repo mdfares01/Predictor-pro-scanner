@@ -43,10 +43,10 @@ async function runVerification() {
       'Android 14+ requirement for screen capture FGS'
     );
     assert(
-      manifestContent.includes('android:foregroundServiceType="mediaProjection"'),
-      'FloatingScannerService foregroundServiceType set',
+      manifestContent.includes('mediaProjection') && manifestContent.includes('specialUse'),
+      'FloatingScannerService foregroundServiceType set (specialUse|mediaProjection)',
       'Android Manifest',
-      'Required for MediaProjection in service'
+      'Required for MediaProjection and overlay in service'
     );
     assert(
       manifestContent.includes('android.permission.POST_NOTIFICATIONS'),

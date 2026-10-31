@@ -15,17 +15,19 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Base64
 import android.util.DisplayMetrics
+import android.util.Log
 import android.view.WindowManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 
 class ScreenCaptureManager(private val context: Context) {
-    private var mediaProjection: MediaProjection? = null
-    private var virtualDisplay: VirtualDisplay? = null
-    private var imageReader: ImageReader? = null
-    private var isCallbackRegistered = false
+
+    companion object {
+        private const val TAG = "ScreenCaptureManager"
+    }
 
     private var screenDensity = DisplayMetrics.DENSITY_DEFAULT
     private var screenWidth = 1080
@@ -53,27 +55,37 @@ class ScreenCaptureManager(private val context: Context) {
         }
     }
 
-    fun setMediaProjection(resultCode: Int, data: Intent) {
-        val projectionManager =
-            context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        mediaProjection = projectionManager.getMediaProjection(resultCode, data)
-
-        // Android 14+ requires registering a callback before creating any VirtualDisplay
-        if (!isCallbackRegistered) {
-            mediaProjection?.registerCallback(object : MediaProjection.Callback() {
-                override fun onStop() {
-                    release()
-                }
-            }, Handler(Looper.getMainLooper()))
-            isCallbackRegistered = true
-        }
-    }
-
-    suspend fun captureScreenBase64(): String? = withContext(Dispatchers.IO) {
-        val projection = mediaProjection ?: return@withContext null
+    suspend fun captureScreenBase64(resultCode: Int, data: Intent): String? = withContext(Dispatchers.IO) {
         updateScreenDimensions()
+        val projectionManager =
+            context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as? MediaProjectionManager
+        if (projectionManager == null) {
+            Log.e(TAG, "MediaProjectionManager is null")
+            return@withContext null
+        }
+
+        var mediaProjection: MediaProjection? = null
+        var virtualDisplay: VirtualDisplay? = null
+        var imageReader: ImageReader? = null
+        var projectionCallback: MediaProjection.Callback? = null
 
         try {
+            Log.d(TAG, "Requesting getMediaProjection from token...")
+            mediaProjection = projectionManager.getMediaProjection(resultCode, data)
+            if (mediaProjection == null) {
+                Log.e(TAG, "getMediaProjection returned null")
+                return@withContext null
+            }
+
+            // Android 14+ requires registering callback BEFORE creating any VirtualDisplay
+            val mainHandler = Handler(Looper.getMainLooper())
+            projectionCallback = object : MediaProjection.Callback() {
+                override fun onStop() {
+                    Log.d(TAG, "MediaProjection session ended")
+                }
+            }
+            mediaProjection.registerCallback(projectionCallback, mainHandler)
+
             imageReader = ImageReader.newInstance(
                 screenWidth,
                 screenHeight,
@@ -81,24 +93,29 @@ class ScreenCaptureManager(private val context: Context) {
                 2
             )
 
-            virtualDisplay = projection.createVirtualDisplay(
+            virtualDisplay = mediaProjection.createVirtualDisplay(
                 "ScreenScannerCapture",
                 screenWidth,
                 screenHeight,
                 screenDensity,
                 DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-                imageReader?.surface,
+                imageReader.surface,
                 null,
                 null
             )
 
-            // Allow short frame capture delay for buffer swap
-            kotlinx.coroutines.delay(250)
+            // Short frame render pause for surface buffer swap
+            delay(350)
 
             var acquiredImage: Image? = null
-            try {
-                acquiredImage = imageReader?.acquireLatestImage()
-                if (acquiredImage != null) {
+            for (attempt in 1..3) {
+                acquiredImage = imageReader.acquireLatestImage()
+                if (acquiredImage != null) break
+                delay(150)
+            }
+
+            if (acquiredImage != null) {
+                try {
                     val planes = acquiredImage.planes
                     val buffer: ByteBuffer = planes[0].buffer
                     val pixelStride = planes[0].pixelStride
@@ -125,31 +142,31 @@ class ScreenCaptureManager(private val context: Context) {
                     }
                     cropped.recycle()
 
+                    Log.d(TAG, "Screenshot captured successfully: ${byteArray.size} bytes")
                     Base64.encodeToString(byteArray, Base64.NO_WRAP)
-                } else {
-                    null
+                } finally {
+                    acquiredImage.close()
                 }
-            } finally {
-                acquiredImage?.close()
+            } else {
+                Log.e(TAG, "No image frame acquired from ImageReader")
+                null
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "Screen capture failed: ${e.message}", e)
             null
         } finally {
-            virtualDisplay?.release()
-            virtualDisplay = null
-            imageReader?.close()
-            imageReader = null
+            try {
+                virtualDisplay?.release()
+            } catch (_: Exception) {}
+            try {
+                imageReader?.close()
+            } catch (_: Exception) {}
+            try {
+                if (projectionCallback != null) {
+                    mediaProjection?.unregisterCallback(projectionCallback)
+                }
+                mediaProjection?.stop()
+            } catch (_: Exception) {}
         }
-    }
-
-    fun release() {
-        virtualDisplay?.release()
-        virtualDisplay = null
-        imageReader?.close()
-        imageReader = null
-        mediaProjection?.stop()
-        mediaProjection = null
-        isCallbackRegistered = false
     }
 }

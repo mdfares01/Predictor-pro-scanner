@@ -17,7 +17,7 @@ function geminiScannerBackendPlugin(): Plugin {
               status: 'online',
               connected: true,
               hasApiKey: !!process.env.GEMINI_API_KEY,
-              model: 'gemini-3.1-flash-lite (resilient fallback: gemini-3.8-flash)',
+              model: 'gemini-3.5-flash-lite (resilient fallback: gemini-3.1-flash-lite, gemini-3.8-flash)',
               timestamp: Date.now(),
             })
           );
@@ -191,15 +191,16 @@ CRITICAL INTEGRITY INSTRUCTIONS:
                 ],
               };
 
-              // Multi-model pipeline: gemini-3.1-flash-lite (fast, minimal latency, avoids deep thinking stalls)
-              // followed by gemini-3.8-flash (configured with ThinkingLevel.LOW to avoid latency spikes)
+              // Multi-model pipeline: gemini-3.5-flash-lite (fastest, high availability)
+              // followed by gemini-3.1-flash-lite and gemini-3.8-flash (configured with ThinkingLevel.LOW to avoid latency spikes)
               const candidateModels: Array<{name: string; timeoutMs: number; thinkingLevel?: ThinkingLevel}> = [
+                {name: 'gemini-3.5-flash-lite', timeoutMs: 15000},
                 {name: 'gemini-3.1-flash-lite', timeoutMs: 15000},
                 {name: 'gemini-3.8-flash', timeoutMs: 20000, thinkingLevel: ThinkingLevel.LOW},
               ];
 
               let parsedResult: any = null;
-              let usedModel = 'gemini-3.1-flash-lite';
+              let usedModel = 'gemini-3.5-flash-lite';
               let lastError: any = null;
 
               for (const candidate of candidateModels) {
@@ -254,25 +255,54 @@ CRITICAL INTEGRITY INSTRUCTIONS:
                 }
               }
 
-              if (parsedResult) {
-                parsedResult.id = String(Date.now());
-                parsedResult.timestamp = Date.now();
-                parsedResult.modelUsed = usedModel;
-
-                // Sync fallback fields if empty
-                if (!parsedResult.summary || parsedResult.summary.length === 0) {
-                  parsedResult.summary = parsedResult.evidence || [];
-                }
-                if (!parsedResult.keyReason) {
-                  parsedResult.keyReason = parsedResult.reasoning || '';
-                }
-
-                res.setHeader('Content-Type', 'application/json');
-                res.end(JSON.stringify(parsedResult));
-                return;
+              if (!parsedResult) {
+                console.warn('All vision models unavailable, returning honest NO_TRADE assessment without fabricating');
+                parsedResult = {
+                  id: String(Date.now()),
+                  signal: 'NO_TRADE',
+                  confidence: 50,
+                  pair: requestedPair || 'EUR/USD',
+                  timeframe: requestedTimeframe || '5m',
+                  evidence: isBn
+                    ? ['এআই ভিশন সার্ভিসে সাময়িক উচ্চ লোড বা প্রতিক্রিয়াহীনতা', 'চার্ট পর্যবেক্ষণ সুরক্ষিতভাবে যাচাই করা যায়নি']
+                    : ['AI vision model temporarily experienced high demand or timeout', 'Chart observations could not be safely verified'],
+                  reasoning: isBn
+                    ? 'আপস্ট্রিম এআই মডেল সাময়িক অনুপলব্ধ থাকায় কোনো সিগন্যাল তৈরি করা হয়নি। কাল্পনিক ট্রেড এড়াতে NO_TRADE সুপারিশ করা হলো।'
+                    : 'Upstream AI model was temporarily unavailable. Strictly refusing to fabricate unverified signals.',
+                  uncertainty: isBn
+                    ? ['লাইভ এআই ভিশন মডেল মূল্যায়ন অনুপলব্ধ', 'ক্যান্ডেলস্টিক প্যাটার্ন যাচাই করা যায়নি']
+                    : ['Live vision evaluation unavailable', 'Candlestick patterns could not be verified'],
+                  summary: isBn
+                    ? ['এআই মডেল সাময়িক অনুপলব্ধ', 'কোনো কাল্পনিক সিগন্যাল তৈরি করা হয়নি', 'কয়েক সেকেন্ড পর আবার স্ক্যান করুন']
+                    : ['AI model temporarily busy', 'No fabricated signal generated', 'Please retry scanning in a few seconds'],
+                  risks: isBn
+                    ? ['অযাচাইকৃত অবস্থায় ট্রেড করা অত্যন্ত ঝুঁকিপূর্ণ', 'বাজারের অস্থিরতা অব্যাহত থাকতে পারে']
+                    : ['Trading without verified vision assessment carries extreme risk', 'Market volatility may persist'],
+                  keyReason: isBn
+                    ? 'সার্ভিস সাময়িক ব্যস্ত — নিরাপদ NO_TRADE বজায় রাখা হয়েছে'
+                    : 'Vision service busy — safe NO_TRADE retained',
+                  disclaimer: isBn
+                    ? 'এটি শুধুমাত্র ভিজ্যুয়াল পর্যবেক্ষণ। কোনো আর্থিক পরামর্শ বা জয়ের নিশ্চয়তা নয়।'
+                    : 'Observational visual interpretation only. Not financial advice. No profit guarantee.',
+                };
+                usedModel = 'fallback-safety';
               }
 
-              throw lastError || new Error('Empty response from Gemini vision model');
+              parsedResult.id = String(Date.now());
+              parsedResult.timestamp = Date.now();
+              parsedResult.modelUsed = usedModel;
+
+              // Sync fallback fields if empty
+              if (!parsedResult.summary || parsedResult.summary.length === 0) {
+                parsedResult.summary = parsedResult.evidence || [];
+              }
+              if (!parsedResult.keyReason) {
+                parsedResult.keyReason = parsedResult.reasoning || '';
+              }
+
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify(parsedResult));
+              return;
             } catch (err: any) {
               console.error('Analysis error:', err?.message || err);
               const isBn = reqLanguage === 'bn';

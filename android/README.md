@@ -82,13 +82,15 @@ A complete, production-grade native Android application built with **Kotlin** an
 
 Once installed on your phone:
 1. Open **Floating PRO Scanner**.
-2. Tap **"Display over other apps"** in Settings or Home dashboard:
+2. Tap **"Display over other apps"** in Settings or Home dashboard (or directly tap **"START SCANNER"**):
    - Android will open system settings. Toggle **Allow display over other apps** to ON.
 3. Tap **"START SCANNER"**:
-   - Android will prompt: *"Start recording or casting with Floating PRO Scanner?"* Tap **"Start now"**.
-4. The circular glowing **PRO** bubble will appear floating over your screen!
-5. Open your preferred trading or chart application (e.g. Quotex demo account).
-6. Move the floating bubble anywhere you like. Tap it to expand the scan panel, and tap **"Scan"** to analyze the active chart with Gemini AI!
+   - The circular glowing **PRO** bubble appears floating on your screen IMMEDIATELY! (No screen-recording prompt needed upfront).
+4. Open your preferred trading or chart application (e.g. Quotex demo account).
+5. Move the floating bubble anywhere you like. Tap it to expand the scan panel.
+6. Tap **"Scan"**:
+   - Android prompts: *"Start recording or casting with Floating PRO Scanner?"* Tap **"Start now"**.
+   - The green screen-sharing indicator briefly illuminates, the screen is captured, analyzed by Gemini AI, and the UP/DOWN/NO TRADE signal appears directly in the panel!
 
 ---
 

@@ -10,6 +10,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -94,16 +95,15 @@ fun MainAppNavHost(
         }
     }
 
-    // Activity Result Launcher for MediaProjection Screen Capture
+    // Activity Result Launcher for MediaProjection Screen Capture (optional test/pre-grant)
     val mediaProjectionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK && result.data != null) {
             viewModel.setCaptureGranted(true)
-            startFloatingService(context, result.resultCode, result.data!!)
+            Toast.makeText(context, "Screen capture permission granted", Toast.LENGTH_SHORT).show()
         } else {
             viewModel.setCaptureGranted(false)
-            viewModel.showError(ErrorType.PERMISSION_DENIED)
         }
     }
 
@@ -132,15 +132,35 @@ fun MainAppNavHost(
         }
     }
 
-    fun requestScreenCaptureAndStart() {
+    fun requestScreenCaptureConsent() {
+        val projectionManager =
+            context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as? MediaProjectionManager
+        if (projectionManager != null) {
+            mediaProjectionLauncher.launch(projectionManager.createScreenCaptureIntent())
+        }
+    }
+
+    fun startFloatingBubbleOverlay() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(context)) {
             requestOverlay()
             return
         }
 
-        val projectionManager =
-            context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        mediaProjectionLauncher.launch(projectionManager.createScreenCaptureIntent())
+        // Start floating overlay service independently without requiring MediaProjection upfront
+        val serviceIntent = Intent(context, FloatingScannerService::class.java).apply {
+            action = FloatingScannerService.ACTION_START
+        }
+        try {
+            ContextCompat.startForegroundService(context, serviceIntent)
+            Toast.makeText(
+                context,
+                "Floating PRO Scanner is active! Check your screen for the floating bubble.",
+                Toast.LENGTH_LONG
+            ).show()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            viewModel.showError(ErrorType.UNKNOWN)
+        }
     }
 
     if (activeError != null) {
@@ -152,7 +172,7 @@ fun MainAppNavHost(
                 if (err == ErrorType.PERMISSION_DENIED) {
                     requestOverlay()
                 } else {
-                    requestScreenCaptureAndStart()
+                    startFloatingBubbleOverlay()
                 }
             },
             onDismiss = { viewModel.clearError() }
@@ -181,10 +201,10 @@ fun MainAppNavHost(
                 isBackendOnline = isBackendOnline,
                 recentScans = recentScans,
                 onStartScannerClick = {
-                    requestScreenCaptureAndStart()
+                    startFloatingBubbleOverlay()
                 },
                 onRequestOverlayClick = { requestOverlay() },
-                onRequestCaptureClick = { requestScreenCaptureAndStart() },
+                onRequestCaptureClick = { requestScreenCaptureConsent() },
                 onNavigateSettings = { navController.navigate("settings") },
                 onNavigateHistory = { navController.navigate("history") }
             )
@@ -199,7 +219,7 @@ fun MainAppNavHost(
                 backendUrl = backendUrl,
                 onUpdateBackendUrl = { viewModel.updateBackendUrl(it) },
                 onGrantOverlay = { requestOverlay() },
-                onGrantCapture = { requestScreenCaptureAndStart() },
+                onGrantCapture = { requestScreenCaptureConsent() },
                 onToggleLanguage = { viewModel.toggleLanguage() },
                 onNavigateBack = { navController.popBackStack() }
             )
@@ -212,13 +232,4 @@ fun MainAppNavHost(
             )
         }
     }
-}
-
-private fun startFloatingService(context: Context, resultCode: Int, data: Intent) {
-    val serviceIntent = Intent(context, FloatingScannerService::class.java).apply {
-        action = FloatingScannerService.ACTION_START
-        putExtra(FloatingScannerService.EXTRA_RESULT_CODE, resultCode)
-        putExtra(FloatingScannerService.EXTRA_DATA, data)
-    }
-    ContextCompat.startForegroundService(context, serviceIntent)
 }

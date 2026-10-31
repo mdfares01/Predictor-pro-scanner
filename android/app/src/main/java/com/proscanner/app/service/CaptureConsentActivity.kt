@@ -1,0 +1,62 @@
+package com.proscanner.app.service
+
+import android.app.Activity
+import android.content.Context
+import android.content.Intent
+import android.media.projection.MediaProjectionManager
+import android.os.Bundle
+import android.util.Log
+import androidx.activity.ComponentActivity
+import androidx.activity.result.contract.ActivityResultContracts
+
+class CaptureConsentActivity : ComponentActivity() {
+
+    companion object {
+        private const val TAG = "CaptureConsentActivity"
+    }
+
+    private val captureLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        Log.d(TAG, "MediaProjection consent result: ${result.resultCode}")
+        if (result.resultCode == Activity.RESULT_OK && result.data != null) {
+            val serviceIntent = Intent(this, FloatingScannerService::class.java).apply {
+                action = FloatingScannerService.ACTION_CAPTURE_WITH_CONSENT
+                putExtra(FloatingScannerService.EXTRA_RESULT_CODE, result.resultCode)
+                putExtra(FloatingScannerService.EXTRA_DATA, result.data)
+            }
+            try {
+                startService(serviceIntent)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to send capture consent to service: ${e.message}", e)
+            }
+        } else {
+            val serviceIntent = Intent(this, FloatingScannerService::class.java).apply {
+                action = FloatingScannerService.ACTION_CAPTURE_CANCELLED
+            }
+            try {
+                startService(serviceIntent)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to send capture cancellation to service: ${e.message}", e)
+            }
+        }
+        finish()
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        val projectionManager =
+            getSystemService(Context.MEDIA_PROJECTION_SERVICE) as? MediaProjectionManager
+        if (projectionManager != null) {
+            try {
+                captureLauncher.launch(projectionManager.createScreenCaptureIntent())
+            } catch (e: Exception) {
+                Log.e(TAG, "Error launching screen capture intent: ${e.message}", e)
+                finish()
+            }
+        } else {
+            Log.e(TAG, "MediaProjectionManager unavailable on this device")
+            finish()
+        }
+    }
+}

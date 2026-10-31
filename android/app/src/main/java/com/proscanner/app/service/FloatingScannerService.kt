@@ -11,11 +11,16 @@ import android.content.pm.ServiceInfo
 import android.graphics.PixelFormat
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
@@ -40,21 +45,24 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewModelStoreOwner {
-    private val mViewModelStore = ViewModelStore()
-    override val viewModelStore: ViewModelStore get() = mViewModelStore
 
     companion object {
+        private const val TAG = "FloatingScannerService"
         const val ACTION_START = "ACTION_START"
         const val ACTION_STOP = "ACTION_STOP"
+        const val ACTION_CAPTURE_WITH_CONSENT = "ACTION_CAPTURE_WITH_CONSENT"
+        const val ACTION_CAPTURE_CANCELLED = "ACTION_CAPTURE_CANCELLED"
         const val EXTRA_RESULT_CODE = "EXTRA_RESULT_CODE"
         const val EXTRA_DATA = "EXTRA_DATA"
         private const val NOTIFICATION_ID = 1001
         private const val CHANNEL_ID = "pro_scanner_channel"
     }
+
+    private val mViewModelStore = ViewModelStore()
+    override val viewModelStore: ViewModelStore get() = mViewModelStore
 
     private val serviceJob = SupervisorJob()
     private val serviceScope = CoroutineScope(Dispatchers.Main + serviceJob)
@@ -72,11 +80,11 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
     private lateinit var bubbleParams: WindowManager.LayoutParams
     private lateinit var panelParams: WindowManager.LayoutParams
 
-    // State
-    private var isExpanded = false
-    private var isScanning = false
-    private var currentResult: ScanResult? = null
-    private var errorMessage: String? = null
+    // Observable Compose State
+    private var isExpanded by mutableStateOf(false)
+    private var isScanning by mutableStateOf(false)
+    private var currentResult by mutableStateOf<ScanResult?>(null)
+    private var errorMessage by mutableStateOf<String?>(null)
 
     // Custom Lifecycle for Compose in Service
     private val lifecycleRegistry = LifecycleRegistry(this)
@@ -87,6 +95,7 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
 
     override fun onCreate() {
         super.onCreate()
+        Log.d(TAG, "Creating FloatingScannerService...")
         savedStateRegistryController.performRestore(null)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
@@ -99,8 +108,13 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        Log.d(TAG, "onStartCommand action: ${intent?.action}")
         when (intent?.action) {
             ACTION_START -> {
+                startForegroundSafely(isCapturing = false)
+                showBubble()
+            }
+            ACTION_CAPTURE_WITH_CONSENT -> {
                 val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, 0)
                 val data = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     intent.getParcelableExtra(EXTRA_DATA, Intent::class.java)
@@ -110,12 +124,15 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
                 }
 
                 if (resultCode != 0 && data != null) {
-                    screenCaptureManager?.setMediaProjection(resultCode, data)
+                    executeScreenScan(resultCode, data)
+                } else {
+                    isScanning = false
+                    errorMessage = "Screen capture permission was invalid."
                 }
-
-                // Promote to foreground with mediaProjection service type on Android 10+ and 14+
-                startForegroundSafely()
-                showBubble()
+            }
+            ACTION_CAPTURE_CANCELLED -> {
+                isScanning = false
+                errorMessage = "Screen capture was cancelled."
             }
             ACTION_STOP -> {
                 stopSelf()
@@ -124,16 +141,35 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
         return START_NOT_STICKY
     }
 
-    private fun startForegroundSafely() {
-        val notification = createNotification()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(
-                NOTIFICATION_ID,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+    private fun startForegroundSafely(isCapturing: Boolean) {
+        try {
+            val notification = createNotification(
+                if (isCapturing) "Scanning screen with Gemini AI..." else "Floating PRO Scanner is Active",
+                isCapturing
             )
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                val fgsType = if (isCapturing) {
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+                } else {
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                }
+                startForeground(NOTIFICATION_ID, notification, fgsType)
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                if (isCapturing) {
+                    startForeground(
+                        NOTIFICATION_ID,
+                        notification,
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+                    )
+                } else {
+                    startForeground(NOTIFICATION_ID, notification)
+                }
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error starting foreground service: ${e.message}", e)
         }
     }
 
@@ -156,7 +192,7 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
         ).apply {
             gravity = Gravity.TOP or Gravity.START
             x = 40
-            y = 300
+            y = 320
         }
 
         // 2. Expanded Panel Layout Params
@@ -179,6 +215,7 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
 
     private fun buildBubbleView() {
         val composeView = ComposeView(this).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setViewTreeLifecycleOwner(this@FloatingScannerService)
             setViewTreeSavedStateRegistryOwner(this@FloatingScannerService)
             setViewTreeViewModelStoreOwner(this@FloatingScannerService)
@@ -221,8 +258,12 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
                         bubbleParams.x = initialX + dx
                         bubbleParams.y = initialY + dy
                         try {
-                            windowManager.updateViewLayout(bubbleView, bubbleParams)
-                        } catch (_: Exception) {}
+                            if (bubbleView?.isAttachedToWindow == true) {
+                                windowManager.updateViewLayout(bubbleView, bubbleParams)
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error updating bubble layout: ${e.message}")
+                        }
                         return true
                     }
                     MotionEvent.ACTION_UP -> {
@@ -241,6 +282,7 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
 
     private fun buildPanelView() {
         val composeView = ComposeView(this).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setViewTreeLifecycleOwner(this@FloatingScannerService)
             setViewTreeSavedStateRegistryOwner(this@FloatingScannerService)
             setViewTreeViewModelStoreOwner(this@FloatingScannerService)
@@ -250,7 +292,7 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
                         isScanning = isScanning,
                         scanResult = currentResult,
                         errorMessage = errorMessage,
-                        onScanClick = { startScan() },
+                        onScanClick = { triggerScanRequest() },
                         onStopClick = { stopScan() },
                         onCollapseClick = { collapsePanel() },
                         onCloseAppClick = { stopSelf() }
@@ -258,71 +300,116 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
                 }
             }
         }
+
+        composeView.setOnTouchListener { _, event ->
+            if (event.action == MotionEvent.ACTION_OUTSIDE) {
+                collapsePanel()
+                true
+            } else {
+                false
+            }
+        }
+
         panelView = composeView
     }
 
     private fun showBubble() {
         try {
-            if (bubbleView?.windowToken == null) {
+            if (bubbleView != null && bubbleView?.isAttachedToWindow != true) {
                 windowManager.addView(bubbleView, bubbleParams)
+                Log.d(TAG, "Floating bubble added to WindowManager")
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "Error showing bubble: ${e.message}", e)
         }
     }
 
     private fun expandPanel() {
         isExpanded = true
         try {
-            if (panelView?.windowToken == null) {
+            if (bubbleView != null && bubbleView?.isAttachedToWindow == true) {
+                windowManager.removeView(bubbleView)
+            }
+            if (panelView != null && panelView?.isAttachedToWindow != true) {
                 windowManager.addView(panelView, panelParams)
+                Log.d(TAG, "Floating panel expanded")
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "Error expanding panel: ${e.message}", e)
         }
     }
 
     private fun collapsePanel() {
         isExpanded = false
         try {
-            if (panelView?.windowToken != null) {
+            if (panelView != null && panelView?.isAttachedToWindow == true) {
                 windowManager.removeView(panelView)
             }
+            if (bubbleView != null && bubbleView?.isAttachedToWindow != true) {
+                windowManager.addView(bubbleView, bubbleParams)
+                Log.d(TAG, "Floating panel collapsed to bubble")
+            }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "Error collapsing panel: ${e.message}", e)
         }
     }
 
-    private fun startScan() {
+    private fun triggerScanRequest() {
         if (isScanning) return
         isScanning = true
         errorMessage = null
         currentResult = null
 
+        try {
+            val intent = Intent(this, CaptureConsentActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(intent)
+            Log.d(TAG, "Launched CaptureConsentActivity for fresh MediaProjection consent")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to launch CaptureConsentActivity: ${e.message}", e)
+            isScanning = false
+            errorMessage = "Could not request screen capture permission."
+        }
+    }
+
+    private fun executeScreenScan(resultCode: Int, data: Intent) {
+        scanJob?.cancel()
         scanJob = serviceScope.launch {
             try {
-                // Simulate capture delay for user screen stabilization
-                delay(400)
-                val base64Image = screenCaptureManager?.captureScreenBase64()
+                isScanning = true
+                errorMessage = null
+
+                // Promote service to mediaProjection FGS BEFORE calling getMediaProjection
+                startForegroundSafely(isCapturing = true)
+
+                val base64Image = screenCaptureManager?.captureScreenBase64(resultCode, data)
+
+                // Revert FGS type back to standard overlay
+                startForegroundSafely(isCapturing = false)
 
                 if (base64Image == null) {
-                    errorMessage = "Could not capture chart screenshot. Check permissions."
+                    errorMessage = "Could not capture chart screenshot. Please retry."
                     isScanning = false
                     return@launch
                 }
 
-                // Call secure backend
+                // Send chart screenshot to secure Gemini AI backend proxy
                 val analysisResult = repository.analyzeChartScreenshot(base64Image)
                 if (analysisResult.isSuccess) {
                     currentResult = analysisResult.getOrThrow()
+                    Log.d(TAG, "Scan analysis succeeded: ${currentResult?.signal} (${currentResult?.confidence}%)")
                 } else {
                     errorMessage = analysisResult.exceptionOrNull()?.localizedMessage
-                        ?: "Failed to analyze chart."
+                        ?: "Failed to analyze chart with AI."
+                    Log.e(TAG, "Scan analysis failed: $errorMessage")
                 }
             } catch (e: Exception) {
+                Log.e(TAG, "Error during executeScreenScan: ${e.message}", e)
                 errorMessage = e.localizedMessage ?: "Unknown scanning error occurred."
             } finally {
                 isScanning = false
+                startForegroundSafely(isCapturing = false)
             }
         }
     }
@@ -331,14 +418,15 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
         scanJob?.cancel()
         scanJob = null
         isScanning = false
+        startForegroundSafely(isCapturing = false)
     }
 
-    private fun createNotification(): Notification {
+    private fun createNotification(contentText: String, isCapturing: Boolean): Notification {
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "Floating PRO Scanner Service",
+                "Floating PRO Scanner",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
                 description = "Active floating bubble and screen scanner"
@@ -354,8 +442,8 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
         )
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Floating PRO Scanner is Active")
-            .setContentText("Tap to open main dashboard or use floating bubble")
+            .setContentTitle(if (isCapturing) "Scanning Chart with Gemini AI" else "Floating PRO Scanner is Active")
+            .setContentText(contentText)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
@@ -364,23 +452,23 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
 
     override fun onDestroy() {
         super.onDestroy()
+        Log.d(TAG, "Destroying FloatingScannerService...")
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
 
         serviceScope.cancel()
         mViewModelStore.clear()
-        screenCaptureManager?.release()
 
         try {
-            if (bubbleView?.windowToken != null) {
+            if (bubbleView != null && bubbleView?.isAttachedToWindow == true) {
                 windowManager.removeView(bubbleView)
             }
-            if (panelView?.windowToken != null) {
+            if (panelView != null && panelView?.isAttachedToWindow == true) {
                 windowManager.removeView(panelView)
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "Error removing views on destroy: ${e.message}", e)
         }
     }
 
