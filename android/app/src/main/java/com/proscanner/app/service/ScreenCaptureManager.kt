@@ -151,22 +151,34 @@ class ScreenCaptureManager(private val context: Context) {
                 Log.e(TAG, "No image frame acquired from ImageReader")
                 null
             }
+        } catch (e: SecurityException) {
+            Log.e(TAG, "SecurityException during screen capture: ${e.message}", e)
+            null
+        } catch (e: IllegalStateException) {
+            Log.e(TAG, "IllegalStateException during screen capture: ${e.message}", e)
+            null
         } catch (e: Exception) {
             Log.e(TAG, "Screen capture failed: ${e.message}", e)
             null
         } finally {
             try {
                 virtualDisplay?.release()
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                Log.w(TAG, "Error releasing virtualDisplay: ${e.message}")
+            }
             try {
                 imageReader?.close()
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                Log.w(TAG, "Error closing imageReader: ${e.message}")
+            }
             try {
                 if (projectionCallback != null) {
                     mediaProjection?.unregisterCallback(projectionCallback)
                 }
                 mediaProjection?.stop()
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                Log.w(TAG, "Error stopping mediaProjection: ${e.message}")
+            }
         }
     }
 }

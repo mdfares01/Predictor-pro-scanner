@@ -31,14 +31,8 @@ class CaptureConsentActivity : ComponentActivity() {
                 Log.e(TAG, "Failed to send capture consent to service: ${e.message}", e)
             }
         } else {
-            val serviceIntent = Intent(this, FloatingScannerService::class.java).apply {
-                action = FloatingScannerService.ACTION_CAPTURE_CANCELLED
-            }
-            try {
-                startService(serviceIntent)
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to send capture cancellation to service: ${e.message}", e)
-            }
+            notifyCancelledAndFinish()
+            return@registerForActivityResult
         }
         finish()
     }
@@ -52,11 +46,23 @@ class CaptureConsentActivity : ComponentActivity() {
                 captureLauncher.launch(projectionManager.createScreenCaptureIntent())
             } catch (e: Exception) {
                 Log.e(TAG, "Error launching screen capture intent: ${e.message}", e)
-                finish()
+                notifyCancelledAndFinish()
             }
         } else {
             Log.e(TAG, "MediaProjectionManager unavailable on this device")
-            finish()
+            notifyCancelledAndFinish()
         }
+    }
+
+    private fun notifyCancelledAndFinish() {
+        val serviceIntent = Intent(this, FloatingScannerService::class.java).apply {
+            action = FloatingScannerService.ACTION_CAPTURE_CANCELLED
+        }
+        try {
+            startService(serviceIntent)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to send capture cancellation to service: ${e.message}", e)
+        }
+        finish()
     }
 }

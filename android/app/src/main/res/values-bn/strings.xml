@@ -79,5 +79,6 @@
     <string name="error_network_desc">এআই ব্যাকএন্ড সার্ভারের সাথে সংযোগ করা সম্ভব হয়নি। ইন্টারনেট সংযোগ যাচাই করুন।</string>
     <string name="error_ai_title">এআই বিশ্লেষণ ত্রুটি</string>
     <string name="error_ai_desc">স্ক্রিনশট বিশ্লেষণের সময় এআই মডেলে সমস্যা দেখা দিয়েছে। পরিষ্কার দৃশ্য সহ পুনরায় চেষ্টা করুন।</string>
+    <string name="error_fgs_start_failed">স্ক্রিন ক্যাপচারের জন্য ফোরগ্রাউন্ড সার্ভিস চালু করা যায়নি।</string>
     <string name="retry">পুনরায় চেষ্টা করুন</string>
 </resources>

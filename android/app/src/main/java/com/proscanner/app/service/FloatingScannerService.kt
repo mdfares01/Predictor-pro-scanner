@@ -111,8 +111,13 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
         Log.d(TAG, "onStartCommand action: ${intent?.action}")
         when (intent?.action) {
             ACTION_START -> {
-                startForegroundSafely(isCapturing = false)
-                showBubble()
+                val started = startForegroundSafely(isCapturing = false)
+                if (started) {
+                    showBubble()
+                } else {
+                    Log.e(TAG, "Failed to start foreground service on ACTION_START; stopping service.")
+                    stopSelf()
+                }
             }
             ACTION_CAPTURE_WITH_CONSENT -> {
                 val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, 0)
@@ -141,8 +146,8 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
         return START_NOT_STICKY
     }
 
-    private fun startForegroundSafely(isCapturing: Boolean) {
-        try {
+    private fun startForegroundSafely(isCapturing: Boolean): Boolean {
+        return try {
             val notification = createNotification(
                 if (isCapturing) "Scanning screen with Gemini AI..." else "Floating PRO Scanner is Active",
                 isCapturing
@@ -168,8 +173,16 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
             } else {
                 startForeground(NOTIFICATION_ID, notification)
             }
+            true
+        } catch (e: SecurityException) {
+            Log.e(TAG, "SecurityException starting foreground service (isCapturing=$isCapturing): ${e.message}", e)
+            false
+        } catch (e: IllegalStateException) {
+            Log.e(TAG, "IllegalStateException starting foreground service (isCapturing=$isCapturing): ${e.message}", e)
+            false
         } catch (e: Exception) {
-            Log.e(TAG, "Error starting foreground service: ${e.message}", e)
+            Log.e(TAG, "Error starting foreground service (isCapturing=$isCapturing): ${e.message}", e)
+            false
         }
     }
 
@@ -376,12 +389,20 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
     private fun executeScreenScan(resultCode: Int, data: Intent) {
         scanJob?.cancel()
         scanJob = serviceScope.launch {
+            var fgsPromoted = false
             try {
                 isScanning = true
                 errorMessage = null
 
-                // Promote service to mediaProjection FGS BEFORE calling getMediaProjection
-                startForegroundSafely(isCapturing = true)
+                // Ensure startForegroundSafely() succeeds before calling getMediaProjection()
+                fgsPromoted = startForegroundSafely(isCapturing = true)
+                if (!fgsPromoted) {
+                    Log.e(TAG, "Failed to start MediaProjection foreground service; stopping service safely.")
+                    errorMessage = getString(R.string.error_fgs_start_failed)
+                    isScanning = false
+                    stopSelf()
+                    return@launch
+                }
 
                 val base64Image = screenCaptureManager?.captureScreenBase64(resultCode, data)
 
@@ -404,12 +425,22 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
                         ?: "Failed to analyze chart with AI."
                     Log.e(TAG, "Scan analysis failed: $errorMessage")
                 }
+            } catch (e: SecurityException) {
+                Log.e(TAG, "SecurityException during executeScreenScan: ${e.message}", e)
+                errorMessage = "Screen capture permission denied or restricted: ${e.localizedMessage}"
+                stopSelf()
             } catch (e: Exception) {
                 Log.e(TAG, "Error during executeScreenScan: ${e.message}", e)
                 errorMessage = e.localizedMessage ?: "Unknown scanning error occurred."
             } finally {
                 isScanning = false
-                startForegroundSafely(isCapturing = false)
+                if (fgsPromoted) {
+                    try {
+                        startForegroundSafely(isCapturing = false)
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Error reverting foreground service type: ${e.message}")
+                    }
+                }
             }
         }
     }
@@ -418,7 +449,11 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
         scanJob?.cancel()
         scanJob = null
         isScanning = false
-        startForegroundSafely(isCapturing = false)
+        try {
+            startForegroundSafely(isCapturing = false)
+        } catch (e: Exception) {
+            Log.w(TAG, "Error resetting foreground service in stopScan: ${e.message}")
+        }
     }
 
     private fun createNotification(contentText: String, isCapturing: Boolean): Notification {

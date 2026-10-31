@@ -103,6 +103,12 @@ async function runVerification() {
       'Localization',
       'Uncertainty & missing data header verified in both files'
     );
+    assert(
+      en.includes('error_fgs_start_failed') && bn.includes('error_fgs_start_failed'),
+      'error_fgs_start_failed localized in English & Bangla',
+      'Localization',
+      'FGS startup failure string verified in both files'
+    );
   }
 
   // Test 3.1: Kotlin Data Model Integrity
@@ -119,7 +125,7 @@ async function runVerification() {
     );
   }
 
-  // Test 4: Kotlin Architecture & Android 14 Compliance
+  // Test 4: Kotlin Architecture & Android 14+ FGS Error Handling
   const servicePath = path.join(rootDir, 'android/app/src/main/java/com/proscanner/app/service/FloatingScannerService.kt');
   if (fs.existsSync(servicePath)) {
     const serviceContent = fs.readFileSync(servicePath, 'utf-8');
@@ -135,6 +141,20 @@ async function runVerification() {
       'Android 14+ FGS',
       'Complies with Android 14 MediaProjection requirements'
     );
+    assert(
+      serviceContent.includes('startForegroundSafely(isCapturing: Boolean): Boolean') &&
+      serviceContent.includes('if (!fgsPromoted)'),
+      'startForegroundSafely returns Boolean and guards getMediaProjection',
+      'Android 14+ FGS',
+      'Stops service safely if MediaProjection FGS fails to start'
+    );
+    assert(
+      serviceContent.includes('catch (e: SecurityException)') &&
+      serviceContent.includes('catch (e: IllegalStateException)'),
+      'startForegroundSafely catches SecurityException and IllegalStateException',
+      'Android 14+ FGS',
+      'Gracefully handles Android 14/15/16 FGS restriction exceptions'
+    );
   }
 
   const capturePath = path.join(rootDir, 'android/app/src/main/java/com/proscanner/app/service/ScreenCaptureManager.kt');
@@ -145,6 +165,23 @@ async function runVerification() {
       'ScreenCaptureManager registers MediaProjection.Callback',
       'Android 14+ Capture',
       'Avoids IllegalStateException in createVirtualDisplay on Android 14'
+    );
+    assert(
+      captureContent.includes('catch (e: SecurityException)'),
+      'ScreenCaptureManager catches SecurityException',
+      'Android 14+ Capture',
+      'Handles system permission revocation cleanly during capture'
+    );
+  }
+
+  const consentPath = path.join(rootDir, 'android/app/src/main/java/com/proscanner/app/service/CaptureConsentActivity.kt');
+  if (fs.existsSync(consentPath)) {
+    const consentContent = fs.readFileSync(consentPath, 'utf-8');
+    assert(
+      consentContent.includes('notifyCancelledAndFinish'),
+      'CaptureConsentActivity handles cancellation and fallback',
+      'Consent Lifecycle',
+      'Ensures service receives ACTION_CAPTURE_CANCELLED on dismiss or error'
     );
   }
 
