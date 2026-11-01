@@ -42,10 +42,24 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        val destination = intent.getStringExtra("destination")
+        if (!destination.isNullOrBlank()) {
+            viewModel.setTargetDestination(destination)
+        }
+
         setContent {
             FloatingPROScannerTheme {
                 MainAppNavHost(viewModel = viewModel, activity = this)
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        val destination = intent.getStringExtra("destination")
+        if (!destination.isNullOrBlank()) {
+            viewModel.setTargetDestination(destination)
         }
     }
 
@@ -75,6 +89,17 @@ fun MainAppNavHost(
     val currentLang by viewModel.currentLanguage.collectAsState()
     val activeError by viewModel.activeError.collectAsState()
     val backendUrl by viewModel.backendUrl.collectAsState()
+    val targetDestination by viewModel.targetDestination.collectAsState()
+
+    // Handle deep navigation when requested from the floating overlay
+    LaunchedEffect(targetDestination) {
+        targetDestination?.let { dest ->
+            navController.navigate(dest) {
+                launchSingleTop = true
+            }
+            viewModel.clearTargetDestination()
+        }
+    }
 
     // Notification permission launcher for Android 13+ (API 33+)
     val notificationPermissionLauncher = rememberLauncherForActivityResult(

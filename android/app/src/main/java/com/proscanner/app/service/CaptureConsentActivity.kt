@@ -35,6 +35,8 @@ class CaptureConsentActivity : ComponentActivity() {
             return@registerForActivityResult
         }
         finish()
+        @Suppress("DEPRECATION")
+        overridePendingTransition(0, 0)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -64,5 +66,7 @@ class CaptureConsentActivity : ComponentActivity() {
             Log.e(TAG, "Failed to send capture cancellation to service: ${e.message}", e)
         }
         finish()
+        @Suppress("DEPRECATION")
+        overridePendingTransition(0, 0)
     }
 }

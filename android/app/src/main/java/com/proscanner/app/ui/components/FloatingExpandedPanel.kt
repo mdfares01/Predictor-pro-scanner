@@ -1,8 +1,11 @@
 package com.proscanner.app.ui.components
 
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,11 +16,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Settings
@@ -28,10 +30,13 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -39,7 +44,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.proscanner.app.R
 import com.proscanner.app.data.model.ScanResult
-import com.proscanner.app.ui.theme.CardBackground
 import com.proscanner.app.ui.theme.CardElevated
 import com.proscanner.app.ui.theme.DarkBackground
 import com.proscanner.app.ui.theme.NeonGreen
@@ -58,14 +62,30 @@ fun FloatingPanelOverlayContent(
     onStopClick: () -> Unit,
     onCollapseClick: () -> Unit,
     onCloseAppClick: () -> Unit,
+    onSettingsClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // Interaction sources for instantaneous, tactile pressed-state animations
+    val scanInteraction = remember { MutableInteractionSource() }
+    val isScanPressed by scanInteraction.collectIsPressedAsState()
+    val scanScale by animateFloatAsState(if (isScanPressed) 0.95f else 1f, label = "scan_scale")
+
+    val settingsInteraction = remember { MutableInteractionSource() }
+    val isSettingsPressed by settingsInteraction.collectIsPressedAsState()
+    val settingsScale by animateFloatAsState(if (isSettingsPressed) 0.95f else 1f, label = "settings_scale")
+
+    val minInteraction = remember { MutableInteractionSource() }
+    val isMinPressed by minInteraction.collectIsPressedAsState()
+
+    val closeInteraction = remember { MutableInteractionSource() }
+    val isClosePressed by closeInteraction.collectIsPressedAsState()
+
+    // Matches the WindowManager window bounds without transparent padding dead zones
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .padding(16.dp)
             .clip(RoundedCornerShape(20.dp))
-            .background(DarkBackground.copy(alpha = 0.96f))
+            .background(DarkBackground.copy(alpha = 0.98f))
             .border(1.5.dp, NeonGreen.copy(alpha = 0.6f), RoundedCornerShape(20.dp))
             .padding(16.dp)
     ) {
@@ -73,96 +93,157 @@ fun FloatingPanelOverlayContent(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.fillMaxWidth()
         ) {
-            // Header bar
+            // Header bar: Dedicated visual drag handle on the left, window controls on the right
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                // Header drag indicator area (handled smoothly by DraggablePanelLayout)
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     ProLogo(size = 28.dp, animated = isScanning)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = stringResource(R.string.pro_scanner),
-                        color = NeonGreen,
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 14.sp
-                    )
+                    Column {
+                        Text(
+                            text = stringResource(R.string.pro_scanner),
+                            color = NeonGreen,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 14.sp
+                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.DragHandle,
+                                contentDescription = null,
+                                tint = TextMuted,
+                                modifier = Modifier.size(10.dp)
+                            )
+                            Spacer(modifier = Modifier.width(2.dp))
+                            Text(
+                                text = "Hold & drag to move",
+                                color = TextMuted,
+                                fontSize = 9.sp
+                            )
+                        }
+                    }
                 }
+
+                // Window Controls: Minimize and Close with immediate visual feedback and accessible 48dp touch targets
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.Remove,
-                        contentDescription = "Minimize",
-                        tint = TextSecondary,
+                    Box(
                         modifier = Modifier
-                            .size(20.dp)
-                            .clickable { onCollapseClick() }
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Close",
-                        tint = TextSecondary,
+                            .size(48.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (isMinPressed) Color(0xFF1E2830) else Color.Transparent)
+                            .clickable(interactionSource = minInteraction, indication = null) {
+                                onCollapseClick()
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Remove,
+                            contentDescription = "Minimize",
+                            tint = if (isMinPressed) NeonGreen else TextSecondary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Box(
                         modifier = Modifier
-                            .size(20.dp)
-                            .clickable { onCloseAppClick() }
-                    )
+                            .size(48.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (isClosePressed) Color(0xFF331618) else Color.Transparent)
+                            .clickable(interactionSource = closeInteraction, indication = null) {
+                                onCloseAppClick()
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close",
+                            tint = if (isClosePressed) SignalDown else TextSecondary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
                 }
             }
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // Action toolbar: [Scan] [Settings] [History]
+            // Action toolbar: [Scan] and [Settings] buttons with instant pressed feedback & 48dp height
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Button(
                     onClick = { if (!isScanning) onScanClick() },
-                    colors = ButtonDefaults.buttonColors(containerColor = NeonGreen),
-                    shape = RoundedCornerShape(10.dp),
-                    modifier = Modifier.weight(1f)
+                    interactionSource = scanInteraction,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isScanPressed) Color(0xFF00C77D) else NeonGreen
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(48.dp)
+                        .graphicsLayer {
+                            scaleX = scanScale
+                            scaleY = scanScale
+                        }
                 ) {
                     Icon(
                         imageVector = Icons.Default.PlayArrow,
                         contentDescription = null,
                         tint = PitchBlack,
-                        modifier = Modifier.size(16.dp)
+                        modifier = Modifier.size(18.dp)
                     )
-                    Spacer(modifier = Modifier.width(4.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = stringResource(R.string.scan),
                         color = PitchBlack,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp
+                        fontSize = 13.sp
                     )
                 }
 
                 OutlinedButton(
-                    onClick = { onCollapseClick() },
-                    shape = RoundedCornerShape(10.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary),
-                    modifier = Modifier.weight(1f)
+                    onClick = { onSettingsClick() },
+                    interactionSource = settingsInteraction,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = TextPrimary,
+                        containerColor = if (isSettingsPressed) Color(0xFF1E2830) else Color.Transparent
+                    ),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(48.dp)
+                        .graphicsLayer {
+                            scaleX = settingsScale
+                            scaleY = settingsScale
+                        }
                 ) {
                     Icon(
                         imageVector = Icons.Default.Settings,
                         contentDescription = null,
                         tint = TextPrimary,
-                        modifier = Modifier.size(16.dp)
+                        modifier = Modifier.size(18.dp)
                     )
-                    Spacer(modifier = Modifier.width(4.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = stringResource(R.string.nav_settings),
-                        fontSize = 12.sp
+                        color = TextPrimary,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold
                     )
                 }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Dynamic Body: Scanning mode vs Result view vs Error
+            // Dynamic Body: Scanning mode vs Result view vs Error vs Idle prompt
             if (isScanning) {
-                // Screen 6: Scanning animation mode
+                // Scanning animation mode
                 ScanningRadar(size = 130.dp)
                 Spacer(modifier = Modifier.height(14.dp))
                 Text(
@@ -182,21 +263,35 @@ fun FloatingPanelOverlayContent(
                 )
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Red STOP button
+                // STOP button with pressed state animation
+                val stopInteraction = remember { MutableInteractionSource() }
+                val isStopPressed by stopInteraction.collectIsPressedAsState()
+                val stopScale by animateFloatAsState(if (isStopPressed) 0.95f else 1f, label = "stop_scale")
+
                 OutlinedButton(
                     onClick = { onStopClick() },
-                    shape = RoundedCornerShape(10.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = SignalDown),
-                    border = ButtonDefaults.outlinedButtonBorder.copy(brush = androidx.compose.ui.graphics.SolidColor(SignalDown)),
+                    interactionSource = stopInteraction,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = SignalDown,
+                        containerColor = if (isStopPressed) Color(0xFF331618) else Color.Transparent
+                    ),
+                    border = ButtonDefaults.outlinedButtonBorder.copy(
+                        brush = androidx.compose.ui.graphics.SolidColor(SignalDown)
+                    ),
                     modifier = Modifier
                         .fillMaxWidth(0.6f)
-                        .height(40.dp)
+                        .height(48.dp)
+                        .graphicsLayer {
+                            scaleX = stopScale
+                            scaleY = stopScale
+                        }
                 ) {
                     Icon(
                         imageVector = Icons.Default.Stop,
                         contentDescription = null,
                         tint = SignalDown,
-                        modifier = Modifier.size(16.dp)
+                        modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
@@ -207,10 +302,14 @@ fun FloatingPanelOverlayContent(
                     )
                 }
             } else if (scanResult != null) {
-                // Screen 7 & 8: Result ready
+                // Analysis Result display
                 ResultCardView(result = scanResult)
             } else if (errorMessage != null) {
-                // Error card
+                // Error card with clear, tactile Retry button
+                val retryInteraction = remember { MutableInteractionSource() }
+                val isRetryPressed by retryInteraction.collectIsPressedAsState()
+                val retryScale by animateFloatAsState(if (isRetryPressed) 0.95f else 1f, label = "retry_scale")
+
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -224,18 +323,29 @@ fun FloatingPanelOverlayContent(
                             text = errorMessage,
                             color = SignalDown,
                             fontSize = 12.sp,
-                            textAlign = TextAlign.Center
+                            textAlign = TextAlign.Center,
+                            lineHeight = 16.sp
                         )
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
                         Button(
                             onClick = { onScanClick() },
-                            colors = ButtonDefaults.buttonColors(containerColor = NeonGreen),
-                            shape = RoundedCornerShape(8.dp)
+                            interactionSource = retryInteraction,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (isRetryPressed) Color(0xFF00C77D) else NeonGreen
+                            ),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier
+                                .fillMaxWidth(0.6f)
+                                .height(48.dp)
+                                .graphicsLayer {
+                                    scaleX = retryScale
+                                    scaleY = retryScale
+                                }
                         ) {
                             Text(
                                 text = stringResource(R.string.retry),
                                 color = PitchBlack,
-                                fontSize = 11.sp,
+                                fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold
                             )
                         }

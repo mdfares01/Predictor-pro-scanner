@@ -15,6 +15,7 @@ import android.util.Log
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.WindowManager
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -194,32 +195,41 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
             WindowManager.LayoutParams.TYPE_PHONE
         }
 
-        // 1. Draggable Bubble Layout Params
+        val metrics = resources.displayMetrics
+        val screenWidth = metrics.widthPixels
+        val screenHeight = metrics.heightPixels
+
+        // 1. Draggable Bubble Layout Params: WRAP_CONTENT, non-focusable, non-modal so touches to other apps are never blocked
         bubbleParams = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             layoutFlag,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = 40
-            y = 320
+            x = 24
+            y = (screenHeight * 0.35f).toInt()
         }
 
-        // 2. Expanded Panel Layout Params
+        // 2. Expanded Panel Layout Params: Constrained width (max 380dp) so transparent outer areas do NOT intercept touches
+        val maxPanelWidthPx = (380 * metrics.density).toInt()
+        val panelWidth = (screenWidth * 0.92f).toInt().coerceAtMost(maxPanelWidthPx)
+
         panelParams = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
+            panelWidth,
             WindowManager.LayoutParams.WRAP_CONTENT,
             layoutFlag,
-            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                     WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
             PixelFormat.TRANSLUCENT
         ).apply {
-            gravity = Gravity.CENTER
-            x = 0
-            y = 0
+            gravity = Gravity.TOP or Gravity.START
+            x = ((screenWidth - panelWidth) / 2).coerceAtLeast(0)
+            y = (screenHeight * 0.12f).toInt()
         }
 
         buildBubbleView()
@@ -236,21 +246,22 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
                 FloatingPROScannerTheme {
                     FloatingBubbleOverlayContent(
                         isScanning = isScanning,
-                        onBubbleClick = {
-                            expandPanel()
-                        }
+                        onBubbleClick = { expandPanel() }
                     )
                 }
             }
         }
 
-        // Drag listener for the bubble
+        val touchSlop = ViewConfiguration.get(this).scaledTouchSlop
+
+        // Reliable drag vs tap detection for the floating bubble
         composeView.setOnTouchListener(object : View.OnTouchListener {
             private var initialX = 0
             private var initialY = 0
             private var initialTouchX = 0f
             private var initialTouchY = 0f
-            private var isClick = true
+            private var isDragging = false
+            private var touchDownTime = 0L
 
             override fun onTouch(v: View, event: MotionEvent): Boolean {
                 when (event.action) {
@@ -259,30 +270,50 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
                         initialY = bubbleParams.y
                         initialTouchX = event.rawX
                         initialTouchY = event.rawY
-                        isClick = true
+                        isDragging = false
+                        touchDownTime = System.currentTimeMillis()
                         return true
                     }
                     MotionEvent.ACTION_MOVE -> {
                         val dx = (event.rawX - initialTouchX).toInt()
                         val dy = (event.rawY - initialTouchY).toInt()
-                        if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
-                            isClick = false
+                        if (!isDragging && (Math.abs(dx) > touchSlop || Math.abs(dy) > touchSlop)) {
+                            isDragging = true
                         }
-                        bubbleParams.x = initialX + dx
-                        bubbleParams.y = initialY + dy
-                        try {
-                            if (bubbleView?.isAttachedToWindow == true) {
-                                windowManager.updateViewLayout(bubbleView, bubbleParams)
+                        if (isDragging) {
+                            val metrics = resources.displayMetrics
+                            val maxX = (metrics.widthPixels - v.width).coerceAtLeast(0)
+                            val maxY = (metrics.heightPixels - v.height).coerceAtLeast(0)
+                            bubbleParams.x = (initialX + dx).coerceIn(0, maxX)
+                            bubbleParams.y = (initialY + dy).coerceIn(0, maxY)
+                            try {
+                                if (bubbleView?.isAttachedToWindow == true) {
+                                    windowManager.updateViewLayout(bubbleView, bubbleParams)
+                                }
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Error updating bubble layout: ${e.message}")
                             }
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Error updating bubble layout: ${e.message}")
                         }
                         return true
                     }
                     MotionEvent.ACTION_UP -> {
-                        if (isClick) {
+                        val duration = System.currentTimeMillis() - touchDownTime
+                        val dx = Math.abs(event.rawX - initialTouchX)
+                        val dy = Math.abs(event.rawY - initialTouchY)
+                        if (!isDragging && dx < touchSlop && dy < touchSlop && duration < 600) {
+                            v.performClick()
                             expandPanel()
+                        } else if (isDragging) {
+                            snapBubbleToEdge(v.width)
                         }
+                        isDragging = false
+                        return true
+                    }
+                    MotionEvent.ACTION_CANCEL -> {
+                        if (isDragging) {
+                            snapBubbleToEdge(v.width)
+                        }
+                        isDragging = false
                         return true
                     }
                 }
@@ -291,6 +322,38 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
         })
 
         bubbleView = composeView
+    }
+
+    private fun snapBubbleToEdge(bubbleWidth: Int) {
+        val metrics = resources.displayMetrics
+        val screenWidth = metrics.widthPixels
+        val middle = screenWidth / 2
+        val finalWidth = if (bubbleWidth > 0) bubbleWidth else (64 * metrics.density).toInt()
+        bubbleParams.x = if (bubbleParams.x + (finalWidth / 2) < middle) {
+            16
+        } else {
+            (screenWidth - finalWidth - 16).coerceAtLeast(0)
+        }
+        try {
+            if (bubbleView?.isAttachedToWindow == true) {
+                windowManager.updateViewLayout(bubbleView, bubbleParams)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error snapping bubble to screen edge: ${e.message}")
+        }
+    }
+
+    private fun openSettingsScreen() {
+        collapsePanel()
+        try {
+            val intent = Intent(this, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                putExtra("destination", "settings")
+            }
+            startActivity(intent)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error opening settings screen: ${e.message}", e)
+        }
     }
 
     private fun buildPanelView() {
@@ -308,22 +371,25 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
                         onScanClick = { triggerScanRequest() },
                         onStopClick = { stopScan() },
                         onCollapseClick = { collapsePanel() },
-                        onCloseAppClick = { stopSelf() }
+                        onCloseAppClick = { stopSelf() },
+                        onSettingsClick = { openSettingsScreen() }
                     )
                 }
             }
         }
 
-        composeView.setOnTouchListener { _, event ->
-            if (event.action == MotionEvent.ACTION_OUTSIDE) {
-                collapsePanel()
-                true
-            } else {
-                false
-            }
+        // DraggablePanelLayout intercepts drag gestures strictly in the header area via MotionEvent rawX/rawY
+        // and dispatches all other touches (including button clicks) immediately to Compose without delay
+        val container = DraggablePanelLayout(
+            context = this,
+            windowManager = windowManager,
+            panelParams = panelParams,
+            onOutsideClick = { collapsePanel() }
+        ).apply {
+            addView(composeView)
         }
 
-        panelView = composeView
+        panelView = container
     }
 
     private fun showBubble() {

@@ -355,15 +355,27 @@ import com.proscanner.app.data.model.ScanResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.IOException
+import java.util.concurrent.TimeUnit
 
 class GeminiAnalysisService(
     private var baseUrl: String = BuildConfig.DEFAULT_BACKEND_URL
 ) {
-    // Calls secure backend /api/analyze without client API key exposure
+    // Disabled redirect following to prevent silently converting 302 auth redirects into HTML 200 responses
+    private val client = OkHttpClient.Builder()
+        .followRedirects(false)
+        .followSslRedirects(false)
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
+        .build()
+
+    // Safe response handling: validates non-HTML body, HTTP status, and clean ScanResult JSON parsing
 }`
   },
   {

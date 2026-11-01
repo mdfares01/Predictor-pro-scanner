@@ -248,7 +248,7 @@ fun SettingsScreen(
                                 modifier = Modifier.size(20.dp)
                             )
                             Spacer(modifier = Modifier.width(12.dp))
-                            Column {
+                            Column(modifier = Modifier.weight(1f, fill = false)) {
                                 Text(
                                     text = stringResource(R.string.backend_server),
                                     color = TextPrimary,
@@ -256,9 +256,11 @@ fun SettingsScreen(
                                     fontWeight = FontWeight.Medium
                                 )
                                 Text(
-                                    text = "Tap to configure endpoint",
+                                    text = backendUrl.ifBlank { "Tap to configure endpoint" },
                                     color = TextMuted,
-                                    fontSize = 10.sp
+                                    fontSize = 10.sp,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                                 )
                             }
                         }
@@ -309,6 +311,35 @@ fun SettingsScreen(
                                         unfocusedTextColor = TextPrimary
                                     )
                                 )
+
+                                Text(
+                                    text = "Quick Presets:",
+                                    color = TextMuted,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Button(
+                                        onClick = { inputUrl = "http://10.0.2.2:3000" },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16222A)),
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Text("Emulator", color = TextPrimary, fontSize = 10.sp)
+                                    }
+                                    Button(
+                                        onClick = { inputUrl = "http://127.0.0.1:3000" },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16222A)),
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Text("Localhost", color = TextPrimary, fontSize = 10.sp)
+                                    }
+                                }
                             }
                         },
                         confirmButton = {

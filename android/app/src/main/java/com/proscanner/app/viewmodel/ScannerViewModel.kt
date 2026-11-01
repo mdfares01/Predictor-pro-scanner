@@ -65,4 +65,15 @@ class ScannerViewModel(
     fun clearError() {
         _activeError.value = null
     }
+
+    private val _targetDestination = MutableStateFlow<String?>(null)
+    val targetDestination: StateFlow<String?> = _targetDestination.asStateFlow()
+
+    fun setTargetDestination(dest: String?) {
+        _targetDestination.value = dest
+    }
+
+    fun clearTargetDestination() {
+        _targetDestination.value = null
+    }
 }
