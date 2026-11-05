@@ -179,8 +179,8 @@ fun MainAppNavHost(
             ContextCompat.startForegroundService(context, serviceIntent)
             Toast.makeText(
                 context,
-                "Floating PRO Scanner is active! Check your screen for the floating bubble.",
-                Toast.LENGTH_LONG
+                "Starting Floating PRO Scanner...",
+                Toast.LENGTH_SHORT
             ).show()
         } catch (e: Exception) {
             e.printStackTrace()

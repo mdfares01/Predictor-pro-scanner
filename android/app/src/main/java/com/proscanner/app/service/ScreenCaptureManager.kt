@@ -70,18 +70,19 @@ class ScreenCaptureManager(private val context: Context) {
         var projectionCallback: MediaProjection.Callback? = null
 
         try {
-            Log.d(TAG, "Requesting getMediaProjection from token...")
+            Log.d(TAG, "[ScreenCapture] Calling projectionManager.getMediaProjection(resultCode, data)...")
             mediaProjection = projectionManager.getMediaProjection(resultCode, data)
             if (mediaProjection == null) {
-                Log.e(TAG, "getMediaProjection returned null")
+                Log.e(TAG, "[ScreenCapture] projectionManager.getMediaProjection returned null!")
                 return@withContext null
             }
+            Log.i(TAG, "[ScreenCapture] getMediaProjection succeeded, registering callback...")
 
             // Android 14+ requires registering callback BEFORE creating any VirtualDisplay
             val mainHandler = Handler(Looper.getMainLooper())
             projectionCallback = object : MediaProjection.Callback() {
                 override fun onStop() {
-                    Log.d(TAG, "MediaProjection session ended")
+                    Log.i(TAG, "[ScreenCapture] MediaProjection session stopped by system or callback")
                 }
             }
             mediaProjection.registerCallback(projectionCallback, mainHandler)
@@ -93,6 +94,7 @@ class ScreenCaptureManager(private val context: Context) {
                 2
             )
 
+            Log.d(TAG, "[ScreenCapture] Creating virtualDisplay ${screenWidth}x${screenHeight} density=$screenDensity...")
             virtualDisplay = mediaProjection.createVirtualDisplay(
                 "ScreenScannerCapture",
                 screenWidth,
@@ -103,6 +105,7 @@ class ScreenCaptureManager(private val context: Context) {
                 null,
                 null
             )
+            Log.i(TAG, "[ScreenCapture] VirtualDisplay created successfully")
 
             // Short frame render pause for surface buffer swap
             delay(350)
@@ -142,42 +145,46 @@ class ScreenCaptureManager(private val context: Context) {
                     }
                     cropped.recycle()
 
-                    Log.d(TAG, "Screenshot captured successfully: ${byteArray.size} bytes")
+                    Log.i(TAG, "[ScreenCapture] Screenshot captured successfully: ${byteArray.size} bytes encoded")
                     Base64.encodeToString(byteArray, Base64.NO_WRAP)
                 } finally {
                     acquiredImage.close()
                 }
             } else {
-                Log.e(TAG, "No image frame acquired from ImageReader")
+                Log.e(TAG, "[ScreenCapture] No image frame acquired from ImageReader after 3 attempts")
                 null
             }
         } catch (e: SecurityException) {
-            Log.e(TAG, "SecurityException during screen capture: ${e.message}", e)
+            Log.e(TAG, "[ScreenCapture] SecurityException during screen capture: ${e.message}", e)
             null
         } catch (e: IllegalStateException) {
-            Log.e(TAG, "IllegalStateException during screen capture: ${e.message}", e)
+            Log.e(TAG, "[ScreenCapture] IllegalStateException during screen capture: ${e.message}", e)
             null
         } catch (e: Exception) {
-            Log.e(TAG, "Screen capture failed: ${e.message}", e)
+            Log.e(TAG, "[ScreenCapture] Unexpected exception during screen capture: ${e.message}", e)
             null
         } finally {
+            Log.d(TAG, "[ScreenCapture] Cleaning up capture resources...")
             try {
                 virtualDisplay?.release()
+                Log.d(TAG, "[ScreenCapture] VirtualDisplay released")
             } catch (e: Exception) {
-                Log.w(TAG, "Error releasing virtualDisplay: ${e.message}")
+                Log.w(TAG, "[ScreenCapture] Error releasing virtualDisplay: ${e.message}")
             }
             try {
                 imageReader?.close()
+                Log.d(TAG, "[ScreenCapture] ImageReader closed")
             } catch (e: Exception) {
-                Log.w(TAG, "Error closing imageReader: ${e.message}")
+                Log.w(TAG, "[ScreenCapture] Error closing imageReader: ${e.message}")
             }
             try {
                 if (projectionCallback != null) {
                     mediaProjection?.unregisterCallback(projectionCallback)
                 }
                 mediaProjection?.stop()
+                Log.d(TAG, "[ScreenCapture] MediaProjection stopped and callback unregistered")
             } catch (e: Exception) {
-                Log.w(TAG, "Error stopping mediaProjection: ${e.message}")
+                Log.w(TAG, "[ScreenCapture] Error stopping mediaProjection: ${e.message}")
             }
         }
     }

@@ -170,10 +170,11 @@ async function runVerification() {
     );
     assert(
       serviceContent.includes('startForegroundSafely(isCapturing: Boolean): Boolean') &&
-      serviceContent.includes('if (!fgsPromoted)'),
-      'startForegroundSafely returns Boolean and guards getMediaProjection',
+      serviceContent.includes('performAttach()') &&
+      serviceContent.includes('startForegroundSafely(isCapturing = true)'),
+      'startForegroundSafely performs attach and synchronously promotes FGS',
       'Android 14+ FGS',
-      'Stops service safely if MediaProjection FGS fails to start'
+      'Synchronously promotes FGS to MEDIA_PROJECTION on main thread during consent handoff'
     );
     assert(
       serviceContent.includes('catch (e: SecurityException)') &&
@@ -260,6 +261,13 @@ async function runVerification() {
       'CaptureConsentActivity handles cancellation and fallback',
       'Consent Lifecycle',
       'Ensures service receives ACTION_CAPTURE_CANCELLED on dismiss or error'
+    );
+    assert(
+      consentContent.includes('ContextCompat.startForegroundService') &&
+      consentContent.includes('[ConsentHandoff]'),
+      'CaptureConsentActivity uses ContextCompat.startForegroundService with diagnostic logging',
+      'Consent Lifecycle',
+      'Ensures safe foreground service transition handoff for MediaProjection'
     );
   }
 

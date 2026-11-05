@@ -8,6 +8,7 @@ import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 
 class CaptureConsentActivity : ComponentActivity() {
 
@@ -18,7 +19,7 @@ class CaptureConsentActivity : ComponentActivity() {
     private val captureLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
-        Log.d(TAG, "MediaProjection consent result: ${result.resultCode}")
+        Log.d(TAG, "[ConsentHandoff] MediaProjection consent result: resultCode=${result.resultCode}, hasData=${result.data != null}")
         if (result.resultCode == Activity.RESULT_OK && result.data != null) {
             val serviceIntent = Intent(this, FloatingScannerService::class.java).apply {
                 action = FloatingScannerService.ACTION_CAPTURE_WITH_CONSENT
@@ -26,11 +27,14 @@ class CaptureConsentActivity : ComponentActivity() {
                 putExtra(FloatingScannerService.EXTRA_DATA, result.data)
             }
             try {
-                startService(serviceIntent)
+                Log.d(TAG, "[ConsentHandoff] Delivering capture intent to FloatingScannerService via ContextCompat.startForegroundService")
+                ContextCompat.startForegroundService(this, serviceIntent)
+                Log.i(TAG, "[ConsentHandoff] Successfully initiated foreground service transition")
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to send capture consent to service: ${e.message}", e)
+                Log.e(TAG, "[ConsentHandoff] Failed to startForegroundService: ${e.javaClass.simpleName} - ${e.message}", e)
             }
         } else {
+            Log.w(TAG, "[ConsentHandoff] User cancelled or denied MediaProjection consent")
             notifyCancelledAndFinish()
             return@registerForActivityResult
         }

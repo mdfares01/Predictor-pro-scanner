@@ -86,6 +86,7 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
     private var isScanning by mutableStateOf(false)
     private var currentResult by mutableStateOf<ScanResult?>(null)
     private var errorMessage by mutableStateOf<String?>(null)
+    private var isBubbleAttached by mutableStateOf(false)
 
     // Custom Lifecycle for Compose in Service
     private val lifecycleRegistry = LifecycleRegistry(this)
@@ -96,7 +97,8 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
 
     override fun onCreate() {
         super.onCreate()
-        Log.d(TAG, "Creating FloatingScannerService...")
+        Log.d(TAG, "[Service-Lifecycle] Creating FloatingScannerService...")
+        savedStateRegistryController.performAttach()
         savedStateRegistryController.performRestore(null)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
@@ -109,14 +111,15 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        Log.d(TAG, "onStartCommand action: ${intent?.action}")
+        Log.d(TAG, "[FGS] onStartCommand action: ${intent?.action}")
         when (intent?.action) {
             ACTION_START -> {
+                Log.d(TAG, "[FGS] Received ACTION_START. Initializing foreground service in SPECIAL_USE mode.")
                 val started = startForegroundSafely(isCapturing = false)
                 if (started) {
                     showBubble()
                 } else {
-                    Log.e(TAG, "Failed to start foreground service on ACTION_START; stopping service.")
+                    Log.e(TAG, "[FGS] Failed to start foreground service on ACTION_START; stopping service.")
                     stopSelf()
                 }
             }
@@ -129,18 +132,34 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
                     intent.getParcelableExtra(EXTRA_DATA)
                 }
 
+                Log.d(TAG, "[MediaProjection-FGS] onStartCommand ACTION_CAPTURE_WITH_CONSENT. resultCode=$resultCode, hasData=${data != null}")
+
                 if (resultCode != 0 && data != null) {
-                    executeScreenScan(resultCode, data)
+                    // Synchronously promote FGS to MEDIA_PROJECTION on main thread while consent is active
+                    val promoted = startForegroundSafely(isCapturing = true)
+                    Log.i(TAG, "[MediaProjection-FGS] Synchronous FGS promotion to MEDIA_PROJECTION: success=$promoted")
+                    if (promoted) {
+                        executeScreenScan(resultCode, data)
+                    } else {
+                        Log.e(TAG, "[MediaProjection-FGS] FGS promotion failed. Keeping overlay active without crashing.")
+                        isScanning = false
+                        errorMessage = getString(R.string.error_fgs_start_failed)
+                        // Revert back to overlay mode safely without stopping service
+                        startForegroundSafely(isCapturing = false)
+                    }
                 } else {
+                    Log.e(TAG, "[MediaProjection-FGS] Received invalid capture permission data: resultCode=$resultCode")
                     isScanning = false
                     errorMessage = "Screen capture permission was invalid."
                 }
             }
             ACTION_CAPTURE_CANCELLED -> {
+                Log.d(TAG, "[MediaProjection-FGS] Screen capture was cancelled by user.")
                 isScanning = false
                 errorMessage = "Screen capture was cancelled."
             }
             ACTION_STOP -> {
+                Log.d(TAG, "[FGS] Received ACTION_STOP. Terminating service.")
                 stopSelf()
             }
         }
@@ -148,6 +167,20 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
     }
 
     private fun startForegroundSafely(isCapturing: Boolean): Boolean {
+        val fgsType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            if (isCapturing) {
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+            } else {
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+            }
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && isCapturing) {
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+        } else {
+            0
+        }
+
+        Log.d(TAG, "[FGS] Executing startForeground: isCapturing=$isCapturing, targetType=$fgsType, sdk=${Build.VERSION.SDK_INT}")
+
         return try {
             val notification = createNotification(
                 if (isCapturing) "Scanning screen with Gemini AI..." else "Floating PRO Scanner is Active",
@@ -155,11 +188,6 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
             )
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                val fgsType = if (isCapturing) {
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
-                } else {
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-                }
                 startForeground(NOTIFICATION_ID, notification, fgsType)
             } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 if (isCapturing) {
@@ -174,15 +202,16 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
             } else {
                 startForeground(NOTIFICATION_ID, notification)
             }
+            Log.i(TAG, "[FGS] startForeground SUCCEEDED (isCapturing=$isCapturing, type=$fgsType)")
             true
         } catch (e: SecurityException) {
-            Log.e(TAG, "SecurityException starting foreground service (isCapturing=$isCapturing): ${e.message}", e)
+            Log.e(TAG, "[FGS] SecurityException in startForeground (isCapturing=$isCapturing, type=$fgsType): ${e.message}", e)
             false
         } catch (e: IllegalStateException) {
-            Log.e(TAG, "IllegalStateException starting foreground service (isCapturing=$isCapturing): ${e.message}", e)
+            Log.e(TAG, "[FGS] IllegalStateException in startForeground (isCapturing=$isCapturing, type=$fgsType): ${e.message}", e)
             false
         } catch (e: Exception) {
-            Log.e(TAG, "Error starting foreground service (isCapturing=$isCapturing): ${e.message}", e)
+            Log.e(TAG, "[FGS] Unexpected exception in startForeground (isCapturing=$isCapturing, type=$fgsType): ${e.javaClass.simpleName}: ${e.message}", e)
             false
         }
     }
@@ -252,6 +281,19 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
             }
         }
 
+        // Add attach state change listener to reliably track when the bubble is actually attached to the WindowManager
+        composeView.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(v: View) {
+                Log.i(TAG, "[Overlay] SUCCESS: Floating bubble is attached to WindowManager")
+                isBubbleAttached = true
+            }
+
+            override fun onViewDetachedFromWindow(v: View) {
+                Log.i(TAG, "[Overlay] Floating bubble detached from WindowManager")
+                isBubbleAttached = false
+            }
+        })
+
         val touchSlop = ViewConfiguration.get(this).scaledTouchSlop
 
         // Reliable drag vs tap detection for the floating bubble
@@ -291,7 +333,7 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
                                     windowManager.updateViewLayout(bubbleView, bubbleParams)
                                 }
                             } catch (e: Exception) {
-                                Log.e(TAG, "Error updating bubble layout: ${e.message}")
+                                Log.e(TAG, "[Overlay] Error updating bubble layout: ${e.message}")
                             }
                         }
                         return true
@@ -339,7 +381,7 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
                 windowManager.updateViewLayout(bubbleView, bubbleParams)
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error snapping bubble to screen edge: ${e.message}")
+            Log.e(TAG, "[Overlay] Error snapping bubble to screen edge: ${e.message}")
         }
     }
 
@@ -352,7 +394,7 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
             }
             startActivity(intent)
         } catch (e: Exception) {
-            Log.e(TAG, "Error opening settings screen: ${e.message}", e)
+            Log.e(TAG, "[Navigation] Error opening settings screen: ${e.message}", e)
         }
     }
 
@@ -386,6 +428,9 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
             panelParams = panelParams,
             onOutsideClick = { collapsePanel() }
         ).apply {
+            setViewTreeLifecycleOwner(this@FloatingScannerService)
+            setViewTreeSavedStateRegistryOwner(this@FloatingScannerService)
+            setViewTreeViewModelStoreOwner(this@FloatingScannerService)
             addView(composeView)
         }
 
@@ -393,43 +438,63 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
     }
 
     private fun showBubble() {
+        val canDraw = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            android.provider.Settings.canDrawOverlays(this)
+        } else {
+            true
+        }
+        Log.d(TAG, "[Overlay] showBubble called. canDrawOverlays=$canDraw, isAttached=${bubbleView?.isAttachedToWindow}")
+
+        if (!canDraw) {
+            Log.e(TAG, "[Overlay] Cannot add bubble: SYSTEM_ALERT_WINDOW permission is missing!")
+            errorMessage = "Overlay permission is not granted. Please enable 'Appear on top'."
+            return
+        }
+
         try {
             if (bubbleView != null && bubbleView?.isAttachedToWindow != true) {
                 windowManager.addView(bubbleView, bubbleParams)
-                Log.d(TAG, "Floating bubble added to WindowManager")
+                Log.i(TAG, "[Overlay] windowManager.addView succeeded for bubble view")
+            } else {
+                Log.d(TAG, "[Overlay] Bubble view already attached or null: isAttached=${bubbleView?.isAttachedToWindow}")
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error showing bubble: ${e.message}", e)
+            Log.e(TAG, "[Overlay] WindowManager.addView FAILED for bubble: ${e.javaClass.simpleName} - ${e.message}", e)
+            errorMessage = "Overlay error: ${e.localizedMessage}"
         }
     }
 
     private fun expandPanel() {
         isExpanded = true
+        Log.d(TAG, "[Overlay] Expanding scanner panel...")
         try {
             if (bubbleView != null && bubbleView?.isAttachedToWindow == true) {
                 windowManager.removeView(bubbleView)
+                Log.d(TAG, "[Overlay] Bubble view removed for panel expansion")
             }
             if (panelView != null && panelView?.isAttachedToWindow != true) {
                 windowManager.addView(panelView, panelParams)
-                Log.d(TAG, "Floating panel expanded")
+                Log.i(TAG, "[Overlay] Floating panel view added to WindowManager")
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error expanding panel: ${e.message}", e)
+            Log.e(TAG, "[Overlay] Error expanding panel: ${e.javaClass.simpleName} - ${e.message}", e)
         }
     }
 
     private fun collapsePanel() {
         isExpanded = false
+        Log.d(TAG, "[Overlay] Collapsing scanner panel to bubble...")
         try {
             if (panelView != null && panelView?.isAttachedToWindow == true) {
                 windowManager.removeView(panelView)
+                Log.d(TAG, "[Overlay] Panel view removed")
             }
             if (bubbleView != null && bubbleView?.isAttachedToWindow != true) {
                 windowManager.addView(bubbleView, bubbleParams)
-                Log.d(TAG, "Floating panel collapsed to bubble")
+                Log.i(TAG, "[Overlay] Bubble view restored to WindowManager")
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error collapsing panel: ${e.message}", e)
+            Log.e(TAG, "[Overlay] Error collapsing panel: ${e.javaClass.simpleName} - ${e.message}", e)
         }
     }
 
@@ -444,9 +509,9 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             startActivity(intent)
-            Log.d(TAG, "Launched CaptureConsentActivity for fresh MediaProjection consent")
+            Log.d(TAG, "[MediaProjection] Launched CaptureConsentActivity for on-demand consent prompt")
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to launch CaptureConsentActivity: ${e.message}", e)
+            Log.e(TAG, "[MediaProjection] Failed to launch CaptureConsentActivity: ${e.message}", e)
             isScanning = false
             errorMessage = "Could not request screen capture permission."
         }
@@ -455,58 +520,45 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
     private fun executeScreenScan(resultCode: Int, data: Intent) {
         scanJob?.cancel()
         scanJob = serviceScope.launch {
-            var fgsPromoted = false
             try {
                 isScanning = true
                 errorMessage = null
 
-                // Ensure startForegroundSafely() succeeds before calling getMediaProjection()
-                fgsPromoted = startForegroundSafely(isCapturing = true)
-                if (!fgsPromoted) {
-                    Log.e(TAG, "Failed to start MediaProjection foreground service; stopping service safely.")
-                    errorMessage = getString(R.string.error_fgs_start_failed)
-                    isScanning = false
-                    stopSelf()
-                    return@launch
-                }
-
+                Log.d(TAG, "[MediaProjection-FGS] Initiating screen capture through ScreenCaptureManager...")
                 val base64Image = screenCaptureManager?.captureScreenBase64(resultCode, data)
 
-                // Revert FGS type back to standard overlay
+                // Revert FGS type back to standard overlay mode after capture attempt
                 startForegroundSafely(isCapturing = false)
 
                 if (base64Image == null) {
+                    Log.e(TAG, "[MediaProjection-FGS] Screenshot capture returned null")
                     errorMessage = "Could not capture chart screenshot. Please retry."
                     isScanning = false
                     return@launch
                 }
 
                 // Send chart screenshot to secure Gemini AI backend proxy
+                Log.d(TAG, "[Analysis] Sending chart screenshot to Gemini backend proxy...")
                 val analysisResult = repository.analyzeChartScreenshot(base64Image)
                 if (analysisResult.isSuccess) {
                     currentResult = analysisResult.getOrThrow()
-                    Log.d(TAG, "Scan analysis succeeded: ${currentResult?.signal} (${currentResult?.confidence}%)")
+                    Log.i(TAG, "[Analysis] Scan analysis succeeded: ${currentResult?.signal} (${currentResult?.confidence}%)")
                 } else {
                     errorMessage = analysisResult.exceptionOrNull()?.localizedMessage
                         ?: "Failed to analyze chart with AI."
-                    Log.e(TAG, "Scan analysis failed: $errorMessage")
+                    Log.e(TAG, "[Analysis] Scan analysis failed: $errorMessage")
                 }
             } catch (e: SecurityException) {
-                Log.e(TAG, "SecurityException during executeScreenScan: ${e.message}", e)
+                Log.e(TAG, "[MediaProjection-FGS] SecurityException during executeScreenScan: ${e.message}", e)
                 errorMessage = "Screen capture permission denied or restricted: ${e.localizedMessage}"
-                stopSelf()
+                // DO NOT stopSelf()! Revert FGS type safely and keep overlay bubble alive
+                startForegroundSafely(isCapturing = false)
             } catch (e: Exception) {
-                Log.e(TAG, "Error during executeScreenScan: ${e.message}", e)
+                Log.e(TAG, "[MediaProjection-FGS] Error during executeScreenScan: ${e.message}", e)
                 errorMessage = e.localizedMessage ?: "Unknown scanning error occurred."
+                startForegroundSafely(isCapturing = false)
             } finally {
                 isScanning = false
-                if (fgsPromoted) {
-                    try {
-                        startForegroundSafely(isCapturing = false)
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Error reverting foreground service type: ${e.message}")
-                    }
-                }
             }
         }
     }
