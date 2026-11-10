@@ -138,6 +138,7 @@ fun FloatingPanelOverlayContent(
                             .clip(RoundedCornerShape(10.dp))
                             .background(if (isMinPressed) Color(0xFF1E2830) else Color.Transparent)
                             .clickable(interactionSource = minInteraction, indication = null) {
+                                android.util.Log.i("FloatingPanel", "[Touch] Minimize button clicked")
                                 onCollapseClick()
                             },
                         contentAlignment = Alignment.Center
@@ -156,6 +157,7 @@ fun FloatingPanelOverlayContent(
                             .clip(RoundedCornerShape(10.dp))
                             .background(if (isClosePressed) Color(0xFF331618) else Color.Transparent)
                             .clickable(interactionSource = closeInteraction, indication = null) {
+                                android.util.Log.i("FloatingPanel", "[Touch] Close button clicked")
                                 onCloseAppClick()
                             },
                         contentAlignment = Alignment.Center
@@ -178,10 +180,15 @@ fun FloatingPanelOverlayContent(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Button(
-                    onClick = { if (!isScanning) onScanClick() },
+                    onClick = {
+                        android.util.Log.i("FloatingPanel", "[Touch] Scan button clicked! isScanning=$isScanning")
+                        onScanClick()
+                    },
+                    enabled = !isScanning,
                     interactionSource = scanInteraction,
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isScanPressed) Color(0xFF00C77D) else NeonGreen
+                        containerColor = if (isScanPressed) Color(0xFF00C77D) else NeonGreen,
+                        disabledContainerColor = NeonGreen.copy(alpha = 0.4f)
                     ),
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier
@@ -208,7 +215,10 @@ fun FloatingPanelOverlayContent(
                 }
 
                 OutlinedButton(
-                    onClick = { onSettingsClick() },
+                    onClick = {
+                        android.util.Log.i("FloatingPanel", "[Touch] Settings button clicked")
+                        onSettingsClick()
+                    },
                     interactionSource = settingsInteraction,
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.outlinedButtonColors(
@@ -269,7 +279,10 @@ fun FloatingPanelOverlayContent(
                 val stopScale by animateFloatAsState(if (isStopPressed) 0.95f else 1f, label = "stop_scale")
 
                 OutlinedButton(
-                    onClick = { onStopClick() },
+                    onClick = {
+                        android.util.Log.i("FloatingPanel", "[Touch] Stop button clicked")
+                        onStopClick()
+                    },
                     interactionSource = stopInteraction,
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.outlinedButtonColors(
@@ -328,7 +341,10 @@ fun FloatingPanelOverlayContent(
                         )
                         Spacer(modifier = Modifier.height(12.dp))
                         Button(
-                            onClick = { onScanClick() },
+                            onClick = {
+                                android.util.Log.i("FloatingPanel", "[Touch] Retry button clicked")
+                                onScanClick()
+                            },
                             interactionSource = retryInteraction,
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = if (isRetryPressed) Color(0xFF00C77D) else NeonGreen

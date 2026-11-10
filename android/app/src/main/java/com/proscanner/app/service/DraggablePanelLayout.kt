@@ -9,14 +9,13 @@ import android.widget.FrameLayout
 
 /**
  * Custom FrameLayout overlay container that provides smooth, reliable dragging of the
- * expanded scanner panel via its header area while ensuring 100% immediate touch dispatch
- * to child Compose buttons (Scan, Settings, Minimize, Close, Stop, Retry).
+ * expanded scanner panel via its dedicated header area while guaranteeing 100% immediate,
+ * uninhibited touch event delivery to all child Compose controls (Scan, Settings, Minimize, Close, Stop, Retry).
  */
 class DraggablePanelLayout(
     context: Context,
     private val windowManager: WindowManager,
-    private val panelParams: WindowManager.LayoutParams,
-    private val onOutsideClick: () -> Unit
+    private val panelParams: WindowManager.LayoutParams
 ) : FrameLayout(context) {
 
     companion object {
@@ -24,85 +23,108 @@ class DraggablePanelLayout(
     }
 
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
-    // Header drag zone: Top 60dp, excluding the rightmost 112dp containing 48dp Minimize & Close buttons
-    private val headerHeightPx = (60 * context.resources.displayMetrics.density).toInt()
-    private val controlsWidthPx = (112 * context.resources.displayMetrics.density).toInt()
+    private val density = context.resources.displayMetrics.density
 
-    private var initialTouchX = 0f
-    private var initialTouchY = 0f
+    // Header drag zone: strictly top 52dp, excluding the rightmost 120dp containing the 48dp Minimize & Close buttons.
+    // The Scan/Settings buttons start at ~78dp from the top, so this zone is completely isolated from all action buttons.
+    private val maxHeaderYPx = (52 * density).toInt()
+    private val controlsWidthPx = (120 * density).toInt()
+
+    private var initialTouchRawX = 0f
+    private var initialTouchRawY = 0f
     private var initialWindowX = 0
     private var initialWindowY = 0
     private var isDragging = false
-    private var isInDragRegion = false
+    private var touchStartedInHeaderDragZone = false
 
-    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
-        if (ev.action == MotionEvent.ACTION_OUTSIDE) {
-            onOutsideClick()
-            return true
-        }
-        return super.dispatchTouchEvent(ev)
+    /**
+     * Determines whether a touch event started inside the dedicated non-clickable header drag region.
+     */
+    private fun isPointInHeaderDragZone(x: Float, y: Float): Boolean {
+        val effectiveWidth = if (width > 0) width else panelParams.width.coerceAtLeast(300)
+        val inVerticalBounds = y in 0f..maxHeaderYPx.toFloat()
+        val inHorizontalBounds = x in 0f..(effectiveWidth - controlsWidthPx).toFloat()
+        return inVerticalBounds && inHorizontalBounds
     }
 
     override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
         when (ev.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                initialTouchX = ev.rawX
-                initialTouchY = ev.rawY
+                initialTouchRawX = ev.rawX
+                initialTouchRawY = ev.rawY
                 initialWindowX = panelParams.x
                 initialWindowY = panelParams.y
                 isDragging = false
-                // Only allow drag initiation if touch starts strictly in the header drag area
-                // and excludes the top-right window controls (Minimize and Close buttons).
-                val effectiveWidth = if (width > 0) width else panelParams.width.coerceAtLeast(300)
-                isInDragRegion = (ev.y in 0f..headerHeightPx.toFloat()) && (ev.x >= 0f && ev.x < (effectiveWidth - controlsWidthPx))
+                touchStartedInHeaderDragZone = isPointInHeaderDragZone(ev.x, ev.y)
+                // Never intercept ACTION_DOWN so child Compose controls receive the down event immediately
+                return false
             }
             MotionEvent.ACTION_MOVE -> {
-                if (isInDragRegion && !isDragging) {
-                    val dx = Math.abs(ev.rawX - initialTouchX)
-                    val dy = Math.abs(ev.rawY - initialTouchY)
+                if (touchStartedInHeaderDragZone && !isDragging) {
+                    val dx = Math.abs(ev.rawX - initialTouchRawX)
+                    val dy = Math.abs(ev.rawY - initialTouchRawY)
                     if (dx > touchSlop || dy > touchSlop) {
                         isDragging = true
                         parent?.requestDisallowInterceptTouchEvent(true)
-                        return true // Intercept the drag gesture
+                        Log.d(TAG, "[Drag] Intercepting drag in header area (dx=$dx, dy=$dy)")
+                        return true
                     }
                 }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 isDragging = false
-                isInDragRegion = false
+                touchStartedInHeaderDragZone = false
             }
         }
-        // If not dragging in header, pass all events directly to child views without delay
         return isDragging
     }
 
     override fun onTouchEvent(ev: MotionEvent): Boolean {
         when (ev.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                initialTouchRawX = ev.rawX
+                initialTouchRawY = ev.rawY
+                initialWindowX = panelParams.x
+                initialWindowY = panelParams.y
+                isDragging = false
+                touchStartedInHeaderDragZone = isPointInHeaderDragZone(ev.x, ev.y)
+                // If touch started in header drag zone and children (ComposeView) did not consume it,
+                // claim the gesture so Android will deliver subsequent ACTION_MOVE and ACTION_UP events.
+                return touchStartedInHeaderDragZone
+            }
             MotionEvent.ACTION_MOVE -> {
-                if (isDragging) {
-                    val dx = (ev.rawX - initialTouchX).toInt()
-                    val dy = (ev.rawY - initialTouchY).toInt()
-                    val metrics = resources.displayMetrics
-                    val panelWidth = if (width > 0) width else panelParams.width
-                    val panelHeight = if (height > 0) height else panelParams.height
-                    val maxX = (metrics.widthPixels - panelWidth).coerceAtLeast(0)
-                    val maxY = (metrics.heightPixels - panelHeight.coerceAtLeast(150)).coerceAtLeast(0)
-                    panelParams.x = (initialWindowX + dx).coerceIn(0, maxX)
-                    panelParams.y = (initialWindowY + dy).coerceIn(0, maxY)
-                    try {
-                        if (isAttachedToWindow) {
-                            windowManager.updateViewLayout(this, panelParams)
-                        }
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error updating panel position: ${e.message}")
+                if (touchStartedInHeaderDragZone) {
+                    val dx = ev.rawX - initialTouchRawX
+                    val dy = ev.rawY - initialTouchRawY
+                    if (!isDragging && (Math.abs(dx) > touchSlop || Math.abs(dy) > touchSlop)) {
+                        isDragging = true
                     }
-                    return true
+                    if (isDragging) {
+                        val metrics = resources.displayMetrics
+                        val panelWidth = if (width > 0) width else panelParams.width
+                        val panelHeight = if (height > 0) height else panelParams.height
+                        val maxX = (metrics.widthPixels - panelWidth).coerceAtLeast(0)
+                        val maxY = (metrics.heightPixels - panelHeight.coerceAtLeast(120)).coerceAtLeast(0)
+                        panelParams.x = (initialWindowX + dx.toInt()).coerceIn(0, maxX)
+                        panelParams.y = (initialWindowY + dy.toInt()).coerceIn(0, maxY)
+                        try {
+                            if (isAttachedToWindow) {
+                                windowManager.updateViewLayout(this, panelParams)
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "[Drag] Error updating panel position: ${e.message}")
+                        }
+                        return true
+                    }
                 }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                val wasDragging = isDragging
                 isDragging = false
-                isInDragRegion = false
-                return true
+                touchStartedInHeaderDragZone = false
+                if (wasDragging) {
+                    return true
+                }
             }
         }
         return super.onTouchEvent(ev)

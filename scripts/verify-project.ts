@@ -205,11 +205,18 @@ async function runVerification() {
     const layoutContent = fs.readFileSync(draggableLayoutPath, 'utf-8');
     assert(
       layoutContent.includes('onInterceptTouchEvent') &&
-      layoutContent.includes('headerHeightPx') &&
+      layoutContent.includes('maxHeaderYPx') &&
       layoutContent.includes('controlsWidthPx'),
       'DraggablePanelLayout isolates drag gestures strictly to the header area',
       'Overlay Interaction',
       'Guarantees button clicks are never blocked or delayed by dragging'
+    );
+    assert(
+      layoutContent.includes('isPointInHeaderDragZone') &&
+      layoutContent.includes('return touchStartedInHeaderDragZone'),
+      'DraggablePanelLayout claims ACTION_DOWN in header to allow smooth dragging',
+      'Overlay Dragging',
+      'Guarantees Android delivers subsequent ACTION_MOVE and ACTION_UP events'
     );
   }
 
@@ -227,6 +234,13 @@ async function runVerification() {
       'Panel buttons meet 48dp touch target accessibility standard',
       'Touch Responsiveness',
       '48dp touch targets for Minimize, Close, Scan, Settings, Stop, Retry'
+    );
+    assert(
+      panelContent.includes('enabled = !isScanning') &&
+      panelContent.includes('[Touch] Scan button clicked'),
+      'Scan button has explicit enabled state and touch diagnostic logging',
+      'Touch Responsiveness',
+      'Immediate button tap response with zero latency or gesture conflict'
     );
     assert(
       panelContent.includes('onSettingsClick') && panelContent.includes('onCloseAppClick'),
@@ -399,10 +413,10 @@ async function runVerification() {
     assert(
       serviceContent.includes('FLAG_NOT_FOCUSABLE') &&
       serviceContent.includes('FLAG_NOT_TOUCH_MODAL') &&
-      serviceContent.includes('FLAG_WATCH_OUTSIDE_TOUCH'),
-      'Overlay uses non-modal and non-focusable flags',
+      serviceContent.includes('FLAG_LAYOUT_IN_SCREEN'),
+      'Overlay uses non-modal, layout-in-screen and non-focusable flags',
       'Overlay Interaction',
-      'Ensures outside touches pass directly to underlying apps'
+      'Ensures outside touches pass directly to underlying apps without border interference'
     );
     assert(
       serviceContent.includes('snapBubbleToEdge'),

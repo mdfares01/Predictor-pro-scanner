@@ -243,7 +243,7 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
             y = (screenHeight * 0.35f).toInt()
         }
 
-        // 2. Expanded Panel Layout Params: Constrained width (max 380dp) so transparent outer areas do NOT intercept touches
+        // 2. Expanded Panel Layout Params: Constrained width (max 380dp) with FLAG_LAYOUT_IN_SCREEN
         val maxPanelWidthPx = (380 * metrics.density).toInt()
         val panelWidth = (screenWidth * 0.92f).toInt().coerceAtMost(maxPanelWidthPx)
 
@@ -252,8 +252,8 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
             WindowManager.LayoutParams.WRAP_CONTENT,
             layoutFlag,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                    WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
@@ -262,7 +262,6 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
         }
 
         buildBubbleView()
-        buildPanelView()
     }
 
     private fun buildBubbleView() {
@@ -400,7 +399,7 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
 
     private fun buildPanelView() {
         val composeView = ComposeView(this).apply {
-            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
             setViewTreeLifecycleOwner(this@FloatingScannerService)
             setViewTreeSavedStateRegistryOwner(this@FloatingScannerService)
             setViewTreeViewModelStoreOwner(this@FloatingScannerService)
@@ -425,8 +424,7 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
         val container = DraggablePanelLayout(
             context = this,
             windowManager = windowManager,
-            panelParams = panelParams,
-            onOutsideClick = { collapsePanel() }
+            panelParams = panelParams
         ).apply {
             setViewTreeLifecycleOwner(this@FloatingScannerService)
             setViewTreeSavedStateRegistryOwner(this@FloatingScannerService)
@@ -472,10 +470,20 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
                 windowManager.removeView(bubbleView)
                 Log.d(TAG, "[Overlay] Bubble view removed for panel expansion")
             }
-            if (panelView != null && panelView?.isAttachedToWindow != true) {
-                windowManager.addView(panelView, panelParams)
-                Log.i(TAG, "[Overlay] Floating panel view added to WindowManager")
+        } catch (e: Exception) {
+            Log.w(TAG, "[Overlay] Exception removing bubbleView: ${e.message}")
+        }
+
+        try {
+            if (panelView != null && panelView?.isAttachedToWindow == true) {
+                windowManager.removeView(panelView)
+                panelView = null
             }
+            // Always build a fresh panel view so ComposeView, its ViewTree owners,
+            // and input event channels are freshly initialized for WindowManager
+            buildPanelView()
+            windowManager.addView(panelView, panelParams)
+            Log.i(TAG, "[Overlay] Floating panel view added to WindowManager")
         } catch (e: Exception) {
             Log.e(TAG, "[Overlay] Error expanding panel: ${e.javaClass.simpleName} - ${e.message}", e)
         }
@@ -487,18 +495,25 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
         try {
             if (panelView != null && panelView?.isAttachedToWindow == true) {
                 windowManager.removeView(panelView)
-                Log.d(TAG, "[Overlay] Panel view removed")
+                panelView = null
+                Log.d(TAG, "[Overlay] Panel view removed and cleanly disposed")
             }
+        } catch (e: Exception) {
+            Log.w(TAG, "[Overlay] Exception removing panelView: ${e.message}")
+        }
+
+        try {
             if (bubbleView != null && bubbleView?.isAttachedToWindow != true) {
                 windowManager.addView(bubbleView, bubbleParams)
                 Log.i(TAG, "[Overlay] Bubble view restored to WindowManager")
             }
         } catch (e: Exception) {
-            Log.e(TAG, "[Overlay] Error collapsing panel: ${e.javaClass.simpleName} - ${e.message}", e)
+            Log.e(TAG, "[Overlay] Error restoring bubble view: ${e.javaClass.simpleName} - ${e.message}", e)
         }
     }
 
     private fun triggerScanRequest() {
+        Log.i(TAG, "[Touch] triggerScanRequest called. Current isScanning=$isScanning")
         if (isScanning) return
         isScanning = true
         errorMessage = null
@@ -506,10 +521,45 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
 
         try {
             val intent = Intent(this, CaptureConsentActivity::class.java).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS)
             }
-            startActivity(intent)
-            Log.d(TAG, "[MediaProjection] Launched CaptureConsentActivity for on-demand consent prompt")
+            val options = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                try {
+                    val bOptions = android.app.ActivityOptions.makeBasic()
+                    bOptions.setPendingIntentBackgroundActivityStartMode(
+                        android.app.ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED
+                    )
+                    bOptions.toBundle()
+                } catch (e: Throwable) {
+                    Log.w(TAG, "[MediaProjection] setPendingIntentBackgroundActivityStartMode warning: ${e.message}")
+                    null
+                }
+            } else {
+                null
+            }
+
+            val pendingIntent = PendingIntent.getActivity(
+                this,
+                101,
+                intent,
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            )
+
+            try {
+                if (options != null) {
+                    pendingIntent.send(this, 0, null, null, null, null, options)
+                } else {
+                    pendingIntent.send()
+                }
+                Log.i(TAG, "[MediaProjection] Dispatched CaptureConsentActivity via PendingIntent with BAL opt-in")
+            } catch (e: Exception) {
+                Log.w(TAG, "[MediaProjection] PendingIntent send failed; fallback to startActivity: ${e.message}")
+                if (options != null) {
+                    startActivity(intent, options)
+                } else {
+                    startActivity(intent)
+                }
+            }
         } catch (e: Exception) {
             Log.e(TAG, "[MediaProjection] Failed to launch CaptureConsentActivity: ${e.message}", e)
             isScanning = false
