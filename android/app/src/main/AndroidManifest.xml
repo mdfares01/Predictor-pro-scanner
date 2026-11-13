@@ -55,7 +55,7 @@
             android:foregroundServiceType="specialUse|mediaProjection">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Floating overlay scanner and trading chart analysis" />
+                android:value="Floating overlay scanner and educational chart analysis" />
         </service>
 
     </application>

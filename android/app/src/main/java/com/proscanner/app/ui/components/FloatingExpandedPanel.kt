@@ -13,10 +13,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DragHandle
@@ -251,7 +254,14 @@ fun FloatingPanelOverlayContent(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Dynamic Body: Scanning mode vs Result view vs Error vs Idle prompt
+            // Dynamic Body (scrollable up to 420dp so Retry/Results never clip while header/toolbar remain fixed)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 420.dp)
+                    .verticalScroll(rememberScrollState()),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
             if (isScanning) {
                 // Scanning animation mode
                 ScanningRadar(size = 130.dp)
@@ -376,6 +386,7 @@ fun FloatingPanelOverlayContent(
                     textAlign = TextAlign.Center,
                     modifier = Modifier.padding(vertical = 14.dp)
                 )
+            }
             }
 
             // Footer branding

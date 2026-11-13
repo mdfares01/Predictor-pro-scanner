@@ -67,12 +67,15 @@ fun HomeScreen(
     isOverlayGranted: Boolean,
     isCaptureGranted: Boolean,
     isBackendOnline: Boolean,
+    isBackendConfigured: Boolean = false,
+    backendStatusDetail: String? = null,
     recentScans: List<ScanResult>,
     onStartScannerClick: () -> Unit,
     onRequestOverlayClick: () -> Unit,
     onRequestCaptureClick: () -> Unit,
     onNavigateSettings: () -> Unit,
-    onNavigateHistory: () -> Unit
+    onNavigateHistory: () -> Unit,
+    onBackendCardClick: () -> Unit = onNavigateSettings
 ) {
     Scaffold(
         containerColor = DarkBackground,
@@ -131,12 +134,34 @@ fun HomeScreen(
 
             // Status Card: Gemini AI Secure Backend
             item {
+                val badgeBg = when {
+                    !isBackendConfigured -> Color(0xFF2D220D)
+                    isBackendOnline -> Color(0xFF0E3023)
+                    else -> Color(0xFF301518)
+                }
+                val badgeTextColor = when {
+                    !isBackendConfigured -> SignalNeutral
+                    isBackendOnline -> NeonGreen
+                    else -> SignalDown
+                }
+                val badgeLabel = when {
+                    !isBackendConfigured -> stringResource(R.string.backend_not_configured)
+                    isBackendOnline -> "✦ ${stringResource(R.string.connected)}"
+                    else -> stringResource(R.string.offline)
+                }
+                val statusSubtitle = when {
+                    !isBackendConfigured -> stringResource(R.string.backend_deployment_required)
+                    isBackendOnline -> stringResource(R.string.secure_backend)
+                    else -> backendStatusDetail ?: stringResource(R.string.secure_backend)
+                }
+
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(16.dp))
                         .background(CardBackground)
                         .border(1.dp, Color(0xFF1E2830), RoundedCornerShape(16.dp))
+                        .clickable { onBackendCardClick() }
                         .padding(14.dp)
                 ) {
                     Row(
@@ -144,7 +169,10 @@ fun HomeScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f).padding(end = 8.dp)
+                        ) {
                             Box(
                                 modifier = Modifier
                                     .size(36.dp)
@@ -163,9 +191,10 @@ fun HomeScreen(
                                     fontSize = 14.sp
                                 )
                                 Text(
-                                    text = stringResource(R.string.secure_backend),
-                                    color = TextSecondary,
-                                    fontSize = 12.sp
+                                    text = statusSubtitle,
+                                    color = if (!isBackendConfigured) SignalNeutral else TextSecondary,
+                                    fontSize = 11.sp,
+                                    maxLines = 2
                                 )
                             }
                         }
@@ -174,19 +203,17 @@ fun HomeScreen(
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(20.dp))
-                                .background(
-                                    if (isBackendOnline) Color(0xFF0E3023) else Color(0xFF301518)
-                                )
+                                .background(badgeBg)
                                 .border(
                                     1.dp,
-                                    if (isBackendOnline) NeonGreen.copy(alpha = 0.5f) else SignalDown.copy(alpha = 0.5f),
+                                    badgeTextColor.copy(alpha = 0.5f),
                                     RoundedCornerShape(20.dp)
                                 )
                                 .padding(horizontal = 10.dp, vertical = 4.dp)
                         ) {
                             Text(
-                                text = if (isBackendOnline) "✦ ${stringResource(R.string.connected)}" else stringResource(R.string.offline),
-                                color = if (isBackendOnline) NeonGreen else SignalDown,
+                                text = badgeLabel,
+                                color = badgeTextColor,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.SemiBold
                             )
@@ -294,8 +321,28 @@ fun HomeScreen(
             }
 
             // Recent Analysis List
-            items(recentScans.take(3)) { scan ->
-                RecentScanItem(scan = scan)
+            if (recentScans.isEmpty()) {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(CardBackground)
+                            .border(1.dp, Color(0xFF172026), RoundedCornerShape(14.dp))
+                            .padding(18.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = stringResource(R.string.no_recent_scans),
+                            color = TextMuted,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+            } else {
+                items(recentScans.take(3)) { scan ->
+                    RecentScanItem(scan = scan)
+                }
             }
 
             item {

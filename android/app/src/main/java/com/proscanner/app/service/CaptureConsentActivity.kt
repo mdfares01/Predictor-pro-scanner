@@ -16,10 +16,13 @@ class CaptureConsentActivity : ComponentActivity() {
         private const val TAG = "CaptureConsentActivity"
     }
 
+    private var resultDispatched = false
+
     private val captureLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
         Log.d(TAG, "[ConsentHandoff] MediaProjection consent result: resultCode=${result.resultCode}, hasData=${result.data != null}")
+        resultDispatched = true
         if (result.resultCode == Activity.RESULT_OK && result.data != null) {
             val serviceIntent = Intent(this, FloatingScannerService::class.java).apply {
                 action = FloatingScannerService.ACTION_CAPTURE_WITH_CONSENT
@@ -32,15 +35,16 @@ class CaptureConsentActivity : ComponentActivity() {
                 Log.i(TAG, "[ConsentHandoff] Successfully initiated foreground service transition")
             } catch (e: Exception) {
                 Log.e(TAG, "[ConsentHandoff] Failed to startForegroundService: ${e.javaClass.simpleName} - ${e.message}", e)
+                notifyFailureAndFinish("Could not start foreground capture service: ${e.localizedMessage ?: e.javaClass.simpleName}")
+                return@registerForActivityResult
             }
+            finish()
+            @Suppress("DEPRECATION")
+            overridePendingTransition(0, 0)
         } else {
             Log.w(TAG, "[ConsentHandoff] User cancelled or denied MediaProjection consent")
-            notifyCancelledAndFinish()
-            return@registerForActivityResult
+            notifyCancelledAndFinish("Screen capture was cancelled or denied. No screenshot was captured.")
         }
-        finish()
-        @Suppress("DEPRECATION")
-        overridePendingTransition(0, 0)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -52,22 +56,61 @@ class CaptureConsentActivity : ComponentActivity() {
                 captureLauncher.launch(projectionManager.createScreenCaptureIntent())
             } catch (e: Exception) {
                 Log.e(TAG, "Error launching screen capture intent: ${e.message}", e)
-                notifyCancelledAndFinish()
+                notifyFailureAndFinish("Could not launch Android screen capture prompt: ${e.localizedMessage ?: "Unknown error"}")
             }
         } else {
             Log.e(TAG, "MediaProjectionManager unavailable on this device")
-            notifyCancelledAndFinish()
+            notifyFailureAndFinish("Screen capture is unavailable on this device.")
         }
     }
 
-    private fun notifyCancelledAndFinish() {
+    override fun onDestroy() {
+        if (isFinishing && !resultDispatched) {
+            resultDispatched = true
+            val cancelIntent = Intent(this, FloatingScannerService::class.java).apply {
+                action = FloatingScannerService.ACTION_CAPTURE_CANCELLED
+                putExtra(
+                    FloatingScannerService.EXTRA_ERROR_MESSAGE,
+                    "Screen capture was cancelled before consent completed."
+                )
+            }
+            try {
+                startService(cancelIntent)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to notify cancellation on destroy: ${e.message}", e)
+            }
+        }
+        super.onDestroy()
+    }
+
+    private fun notifyCancelledAndFinish(message: String? = null) {
+        resultDispatched = true
         val serviceIntent = Intent(this, FloatingScannerService::class.java).apply {
             action = FloatingScannerService.ACTION_CAPTURE_CANCELLED
+            if (!message.isNullOrBlank()) {
+                putExtra(FloatingScannerService.EXTRA_ERROR_MESSAGE, message)
+            }
         }
         try {
             startService(serviceIntent)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to send capture cancellation to service: ${e.message}", e)
+        }
+        finish()
+        @Suppress("DEPRECATION")
+        overridePendingTransition(0, 0)
+    }
+
+    private fun notifyFailureAndFinish(message: String) {
+        resultDispatched = true
+        val serviceIntent = Intent(this, FloatingScannerService::class.java).apply {
+            action = FloatingScannerService.ACTION_CAPTURE_FAILED
+            putExtra(FloatingScannerService.EXTRA_ERROR_MESSAGE, message)
+        }
+        try {
+            startService(serviceIntent)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to send capture failure to service: ${e.message}", e)
         }
         finish()
         @Suppress("DEPRECATION")

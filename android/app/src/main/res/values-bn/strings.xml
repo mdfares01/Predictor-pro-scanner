@@ -1,7 +1,7 @@
 <resources>
     <string name="app_name">ফ্লোটিং প্রো স্ক্যানার</string>
-    <string name="tagline">এআই চালিত ট্রেডিং বিশ্লেষণ</string>
-    <string name="sub_tagline">স্মার্ট • দ্রুত • নির্ভুল</string>
+    <string name="tagline">শিক্ষামূলক এআই চার্ট বিশ্লেষণ</string>
+    <string name="sub_tagline">পর্যবেক্ষণ • শিক্ষা • বিশ্লেষণ</string>
     <string name="initializing">শুরু হচ্ছে…</string>
     
     <!-- Home Dashboard -->
@@ -9,6 +9,8 @@
     <string name="secure_backend">নিরাপদ ব্যাকএন্ড</string>
     <string name="connected">সংযুক্ত</string>
     <string name="offline">অফলাইন</string>
+    <string name="backend_not_configured">ব্যাকএন্ড কনফিগার করা নেই</string>
+    <string name="backend_deployment_required">সংযোগের জন্য একটি বাস্তব HTTPS ব্যাকএন্ড প্রয়োজন</string>
     <string name="floating_button">ফ্লোটিং বোতাম</string>
     <string name="floating_button_desc">অন্য অ্যাপের উপরে প্রো বাটন চালু করুন</string>
     <string name="screen_capture">স্ক্রিন ক্যাপচার</string>
@@ -19,6 +21,7 @@
     <string name="not_granted">অনুমতি নেই</string>
     <string name="start_scanner">স্ক্যানার চালু করুন</string>
     <string name="recent_analysis">সাম্প্রতিক বিশ্লেষণ</string>
+    <string name="no_recent_scans">এখনও কোনো সম্পূর্ণ চার্ট বিশ্লেষণ নেই।</string>
     <string name="view_all">সবগুলো দেখুন</string>
     
     <!-- Navigation -->
@@ -72,7 +75,7 @@
 
     <!-- Errors -->
     <string name="error_permission_title">অনুমতি বাতিল হয়েছে</string>
-    <string name="error_permission_desc">ট্রেডিং চার্ট বিশ্লেষণের জন্য স্ক্রিন ক্যাপচার ও ওভারলে অনুমতি প্রয়োজন।</string>
+    <string name="error_permission_desc">চার্ট স্ক্রিনশট বিশ্লেষণের জন্য স্ক্রিন ক্যাপচার ও ওভারলে অনুমতি প্রয়োজন।</string>
     <string name="error_no_chart_title">কোন চার্ট সনাক্ত হয়নি</string>
     <string name="error_no_chart_desc">ক্যান্ডেলস্টিক চার্ট স্পষ্টভাবে চিহ্নিত করা যায়নি। অনুগ্রহ করে সম্পূর্ণ চার্ট দৃশ্যমান রাখুন।</string>
     <string name="error_network_title">নেটওয়ার্ক ত্রুটি</string>
@@ -80,6 +83,8 @@
     <string name="error_ai_title">এআই বিশ্লেষণ ত্রুটি</string>
     <string name="error_ai_desc">স্ক্রিনশট বিশ্লেষণের সময় এআই মডেলে সমস্যা দেখা দিয়েছে। পরিষ্কার দৃশ্য সহ পুনরায় চেষ্টা করুন।</string>
     <string name="error_fgs_start_failed">স্ক্রিন ক্যাপচারের জন্য ফোরগ্রাউন্ড সার্ভিস চালু করা যায়নি।</string>
+    <string name="error_capture_cancelled">স্ক্রিন ক্যাপচার বাতিল করা হয়েছে। কোনো স্ক্রিনশট নেওয়া হয়নি।</string>
+    <string name="error_backend_not_configured_detail">ব্যাকএন্ড কনফিগার করা নেই। সংযোগের জন্য একটি বাস্তব পাবলিক HTTPS ব্যাকএন্ড সার্ভার প্রয়োজন। সেটিংসে আপনার ব্যাকএন্ড URL যোগ করুন।</string>
     <string name="error_unknown_title">অপ্রত্যাশিত ত্রুটি</string>
     <string name="error_unknown_desc">স্ক্যানার সার্ভিস চালু করতে সমস্যা হয়েছে। অনুগ্রহ করে অনুমতি যাচাই করে আবার চেষ্টা করুন।</string>
     <string name="retry">পুনরায় চেষ্টা করুন</string>

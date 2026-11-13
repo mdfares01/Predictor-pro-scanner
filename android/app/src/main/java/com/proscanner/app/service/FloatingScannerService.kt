@@ -8,6 +8,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.content.res.Configuration
 import android.graphics.PixelFormat
 import android.os.Build
 import android.os.IBinder
@@ -56,8 +57,10 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
         const val ACTION_STOP = "ACTION_STOP"
         const val ACTION_CAPTURE_WITH_CONSENT = "ACTION_CAPTURE_WITH_CONSENT"
         const val ACTION_CAPTURE_CANCELLED = "ACTION_CAPTURE_CANCELLED"
+        const val ACTION_CAPTURE_FAILED = "ACTION_CAPTURE_FAILED"
         const val EXTRA_RESULT_CODE = "EXTRA_RESULT_CODE"
         const val EXTRA_DATA = "EXTRA_DATA"
+        const val EXTRA_ERROR_MESSAGE = "EXTRA_ERROR_MESSAGE"
         private const val NOTIFICATION_ID = 1001
         private const val CHANNEL_ID = "pro_scanner_channel"
     }
@@ -71,7 +74,8 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
 
     private lateinit var windowManager: WindowManager
     private var screenCaptureManager: ScreenCaptureManager? = null
-    private val repository = ScannerRepository()
+    private val repository = ScannerRepository.shared
+    private var isForegroundStarted = false
 
     // Overlay Views
     private var bubbleView: View? = null
@@ -104,10 +108,11 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
 
+        repository.initPersistence(applicationContext)
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         screenCaptureManager = ScreenCaptureManager(this)
 
-        setupOverlayViews()
+        setupOverlayParams()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -134,7 +139,7 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
 
                 Log.d(TAG, "[MediaProjection-FGS] onStartCommand ACTION_CAPTURE_WITH_CONSENT. resultCode=$resultCode, hasData=${data != null}")
 
-                if (resultCode != 0 && data != null) {
+                if (resultCode == android.app.Activity.RESULT_OK && data != null) {
                     // Synchronously promote FGS to MEDIA_PROJECTION on main thread while consent is active
                     val promoted = startForegroundSafely(isCapturing = true)
                     Log.i(TAG, "[MediaProjection-FGS] Synchronous FGS promotion to MEDIA_PROJECTION: success=$promoted")
@@ -150,13 +155,29 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
                 } else {
                     Log.e(TAG, "[MediaProjection-FGS] Received invalid capture permission data: resultCode=$resultCode")
                     isScanning = false
-                    errorMessage = "Screen capture permission was invalid."
+                    errorMessage = "Screen capture permission was denied or invalid. No screenshot was captured."
+                    if (!isForegroundStarted) {
+                        startForegroundSafely(isCapturing = false)
+                    }
                 }
             }
             ACTION_CAPTURE_CANCELLED -> {
                 Log.d(TAG, "[MediaProjection-FGS] Screen capture was cancelled by user.")
                 isScanning = false
-                errorMessage = "Screen capture was cancelled."
+                errorMessage = intent.getStringExtra(EXTRA_ERROR_MESSAGE)
+                    ?: getString(R.string.error_capture_cancelled)
+                if (!isForegroundStarted) {
+                    stopSelf()
+                }
+            }
+            ACTION_CAPTURE_FAILED -> {
+                Log.e(TAG, "[MediaProjection-FGS] Screen capture consent failed: ${intent.getStringExtra(EXTRA_ERROR_MESSAGE)}")
+                isScanning = false
+                errorMessage = intent.getStringExtra(EXTRA_ERROR_MESSAGE)
+                    ?: "Screen capture could not be started. Please try again."
+                if (!isForegroundStarted) {
+                    stopSelf()
+                }
             }
             ACTION_STOP -> {
                 Log.d(TAG, "[FGS] Received ACTION_STOP. Terminating service.")
@@ -202,6 +223,7 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
             } else {
                 startForeground(NOTIFICATION_ID, notification)
             }
+            isForegroundStarted = true
             Log.i(TAG, "[FGS] startForeground SUCCEEDED (isCapturing=$isCapturing, type=$fgsType)")
             true
         } catch (e: SecurityException) {
@@ -216,7 +238,7 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
         }
     }
 
-    private fun setupOverlayViews() {
+    private fun setupOverlayParams() {
         val layoutFlag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
         } else {
@@ -260,13 +282,39 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
             x = ((screenWidth - panelWidth) / 2).coerceAtLeast(0)
             y = (screenHeight * 0.12f).toInt()
         }
-
-        buildBubbleView()
     }
 
-    private fun buildBubbleView() {
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        val metrics = resources.displayMetrics
+        val screenWidth = metrics.widthPixels
+        val screenHeight = metrics.heightPixels
+        val maxPanelWidthPx = (380 * metrics.density).toInt()
+        val newPanelWidth = (screenWidth * 0.92f).toInt().coerceAtMost(maxPanelWidthPx)
+
+        panelParams.width = newPanelWidth
+        panelParams.x = panelParams.x.coerceIn(0, (screenWidth - newPanelWidth).coerceAtLeast(0))
+        panelParams.y = panelParams.y.coerceIn(0, (screenHeight - (220 * metrics.density).toInt()).coerceAtLeast(0))
+
+        val bubbleDim = (64 * metrics.density).toInt()
+        bubbleParams.x = bubbleParams.x.coerceIn(0, (screenWidth - bubbleDim).coerceAtLeast(0))
+        bubbleParams.y = bubbleParams.y.coerceIn(0, (screenHeight - bubbleDim).coerceAtLeast(0))
+
+        try {
+            if (panelView?.isAttachedToWindow == true) {
+                windowManager.updateViewLayout(panelView, panelParams)
+            }
+            if (bubbleView?.isAttachedToWindow == true) {
+                windowManager.updateViewLayout(bubbleView, bubbleParams)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "[Overlay] Error updating layout on configuration change: ${e.message}")
+        }
+    }
+
+    private fun buildBubbleView(): View {
         val composeView = ComposeView(this).apply {
-            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
             setViewTreeLifecycleOwner(this@FloatingScannerService)
             setViewTreeSavedStateRegistryOwner(this@FloatingScannerService)
             setViewTreeViewModelStoreOwner(this@FloatingScannerService)
@@ -305,7 +353,7 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
             private var touchDownTime = 0L
 
             override fun onTouch(v: View, event: MotionEvent): Boolean {
-                when (event.action) {
+                when (event.actionMasked) {
                     MotionEvent.ACTION_DOWN -> {
                         initialX = bubbleParams.x
                         initialY = bubbleParams.y
@@ -362,7 +410,7 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
             }
         })
 
-        bubbleView = composeView
+        return composeView
     }
 
     private fun snapBubbleToEdge(bubbleWidth: Int) {
@@ -441,7 +489,7 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
         } else {
             true
         }
-        Log.d(TAG, "[Overlay] showBubble called. canDrawOverlays=$canDraw, isAttached=${bubbleView?.isAttachedToWindow}")
+        Log.d(TAG, "[Overlay] showBubble called. canDrawOverlays=$canDraw, isExpanded=$isExpanded, isAttached=${bubbleView?.isAttachedToWindow}")
 
         if (!canDraw) {
             Log.e(TAG, "[Overlay] Cannot add bubble: SYSTEM_ALERT_WINDOW permission is missing!")
@@ -449,34 +497,58 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
             return
         }
 
+        // Prevent duplicate overlay if expanded panel is already visible
+        if (isExpanded || panelView?.isAttachedToWindow == true) {
+            Log.d(TAG, "[Overlay] Expanded panel already active; keeping single overlay without duplicate bubble")
+            return
+        }
+
         try {
-            if (bubbleView != null && bubbleView?.isAttachedToWindow != true) {
+            if (bubbleView?.isAttachedToWindow != true) {
+                bubbleView = buildBubbleView()
                 windowManager.addView(bubbleView, bubbleParams)
-                Log.i(TAG, "[Overlay] windowManager.addView succeeded for bubble view")
+                Log.i(TAG, "[Overlay] windowManager.addView succeeded for fresh bubble view")
             } else {
-                Log.d(TAG, "[Overlay] Bubble view already attached or null: isAttached=${bubbleView?.isAttachedToWindow}")
+                Log.d(TAG, "[Overlay] Bubble view already attached")
             }
         } catch (e: Exception) {
             Log.e(TAG, "[Overlay] WindowManager.addView FAILED for bubble: ${e.javaClass.simpleName} - ${e.message}", e)
+            bubbleView = null
             errorMessage = "Overlay error: ${e.localizedMessage}"
         }
     }
 
     private fun expandPanel() {
+        val canDraw = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            android.provider.Settings.canDrawOverlays(this)
+        } else {
+            true
+        }
+        if (!canDraw) {
+            Log.e(TAG, "[Overlay] Cannot expand panel: SYSTEM_ALERT_WINDOW permission missing")
+            return
+        }
+
         isExpanded = true
         Log.d(TAG, "[Overlay] Expanding scanner panel...")
         try {
-            if (bubbleView != null && bubbleView?.isAttachedToWindow == true) {
-                windowManager.removeView(bubbleView)
-                Log.d(TAG, "[Overlay] Bubble view removed for panel expansion")
+            if (bubbleView != null) {
+                if (bubbleView?.isAttachedToWindow == true) {
+                    windowManager.removeView(bubbleView)
+                }
+                bubbleView = null
+                Log.d(TAG, "[Overlay] Bubble view removed and cleared for panel expansion")
             }
         } catch (e: Exception) {
             Log.w(TAG, "[Overlay] Exception removing bubbleView: ${e.message}")
+            bubbleView = null
         }
 
         try {
-            if (panelView != null && panelView?.isAttachedToWindow == true) {
-                windowManager.removeView(panelView)
+            if (panelView != null) {
+                if (panelView?.isAttachedToWindow == true) {
+                    windowManager.removeView(panelView)
+                }
                 panelView = null
             }
             // Always build a fresh panel view so ComposeView, its ViewTree owners,
@@ -486,6 +558,7 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
             Log.i(TAG, "[Overlay] Floating panel view added to WindowManager")
         } catch (e: Exception) {
             Log.e(TAG, "[Overlay] Error expanding panel: ${e.javaClass.simpleName} - ${e.message}", e)
+            panelView = null
         }
     }
 
@@ -493,28 +566,41 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
         isExpanded = false
         Log.d(TAG, "[Overlay] Collapsing scanner panel to bubble...")
         try {
-            if (panelView != null && panelView?.isAttachedToWindow == true) {
-                windowManager.removeView(panelView)
+            if (panelView != null) {
+                if (panelView?.isAttachedToWindow == true) {
+                    windowManager.removeView(panelView)
+                }
                 panelView = null
                 Log.d(TAG, "[Overlay] Panel view removed and cleanly disposed")
             }
         } catch (e: Exception) {
             Log.w(TAG, "[Overlay] Exception removing panelView: ${e.message}")
+            panelView = null
         }
 
         try {
-            if (bubbleView != null && bubbleView?.isAttachedToWindow != true) {
+            if (bubbleView?.isAttachedToWindow != true) {
+                bubbleView = buildBubbleView()
                 windowManager.addView(bubbleView, bubbleParams)
-                Log.i(TAG, "[Overlay] Bubble view restored to WindowManager")
+                Log.i(TAG, "[Overlay] Fresh bubble view restored to WindowManager")
             }
         } catch (e: Exception) {
             Log.e(TAG, "[Overlay] Error restoring bubble view: ${e.javaClass.simpleName} - ${e.message}", e)
+            bubbleView = null
         }
     }
 
     private fun triggerScanRequest() {
         Log.i(TAG, "[Touch] triggerScanRequest called. Current isScanning=$isScanning")
         if (isScanning) return
+
+        if (!repository.isBackendConfigured()) {
+            Log.w(TAG, "[Backend] Scan blocked: backend URL is not configured")
+            currentResult = null
+            errorMessage = getString(R.string.error_backend_not_configured_detail)
+            return
+        }
+
         isScanning = true
         errorMessage = null
         currentResult = null
@@ -563,7 +649,7 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
         } catch (e: Exception) {
             Log.e(TAG, "[MediaProjection] Failed to launch CaptureConsentActivity: ${e.message}", e)
             isScanning = false
-            errorMessage = "Could not request screen capture permission."
+            errorMessage = "Could not request screen capture permission: ${e.localizedMessage ?: "Unknown error"}"
         }
     }
 
@@ -575,17 +661,21 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
                 errorMessage = null
 
                 Log.d(TAG, "[MediaProjection-FGS] Initiating screen capture through ScreenCaptureManager...")
-                val base64Image = screenCaptureManager?.captureScreenBase64(resultCode, data)
+                val captureResult = screenCaptureManager?.captureScreenBase64(resultCode, data)
+                    ?: Result.failure(IllegalStateException("ScreenCaptureManager is not initialized."))
 
-                // Revert FGS type back to standard overlay mode after capture attempt
+                // Revert FGS type back to standard overlay mode after capture completes
                 startForegroundSafely(isCapturing = false)
 
-                if (base64Image == null) {
-                    Log.e(TAG, "[MediaProjection-FGS] Screenshot capture returned null")
-                    errorMessage = "Could not capture chart screenshot. Please retry."
-                    isScanning = false
+                if (captureResult.isFailure) {
+                    val captureErr = captureResult.exceptionOrNull()?.localizedMessage
+                        ?: "Could not capture chart screenshot. Please retry."
+                    Log.e(TAG, "[MediaProjection-FGS] Screenshot capture failed: $captureErr")
+                    errorMessage = captureErr
                     return@launch
                 }
+
+                val base64Image = captureResult.getOrThrow()
 
                 // Send chart screenshot to secure Gemini AI backend proxy
                 Log.d(TAG, "[Analysis] Sending chart screenshot to Gemini backend proxy...")
@@ -600,7 +690,7 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
                 }
             } catch (e: SecurityException) {
                 Log.e(TAG, "[MediaProjection-FGS] SecurityException during executeScreenScan: ${e.message}", e)
-                errorMessage = "Screen capture permission denied or restricted: ${e.localizedMessage}"
+                errorMessage = "Screen capture permission denied or restricted: ${e.localizedMessage ?: "SecurityException"}"
                 // DO NOT stopSelf()! Revert FGS type safely and keep overlay bubble alive
                 startForegroundSafely(isCapturing = false)
             } catch (e: Exception) {
@@ -664,12 +754,19 @@ class FloatingScannerService : Service(), LifecycleOwner, SavedStateRegistryOwne
         mViewModelStore.clear()
 
         try {
-            if (bubbleView != null && bubbleView?.isAttachedToWindow == true) {
-                windowManager.removeView(bubbleView)
+            if (bubbleView != null) {
+                if (bubbleView?.isAttachedToWindow == true) {
+                    windowManager.removeViewImmediate(bubbleView)
+                }
+                bubbleView = null
             }
-            if (panelView != null && panelView?.isAttachedToWindow == true) {
-                windowManager.removeView(panelView)
+            if (panelView != null) {
+                if (panelView?.isAttachedToWindow == true) {
+                    windowManager.removeViewImmediate(panelView)
+                }
+                panelView = null
             }
+            stopForeground(STOP_FOREGROUND_REMOVE)
         } catch (e: Exception) {
             Log.e(TAG, "Error removing views on destroy: ${e.message}", e)
         }

@@ -1,5 +1,6 @@
 package com.proscanner.app.viewmodel
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.proscanner.app.data.model.ScanResult
@@ -11,11 +12,14 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 class ScannerViewModel(
-    private val repository: ScannerRepository = ScannerRepository()
+    private val repository: ScannerRepository = ScannerRepository.shared
 ) : ViewModel() {
 
     val recentScans: StateFlow<List<ScanResult>> = repository.recentScans
     val isBackendConnected: StateFlow<Boolean> = repository.isBackendConnected
+    val isBackendConfigured: StateFlow<Boolean> = repository.isBackendConfigured
+    val backendUrl: StateFlow<String> = repository.backendUrl
+    val backendStatusDetail: StateFlow<String?> = repository.backendStatusDetail
 
     private val _isOverlayGranted = MutableStateFlow(false)
     val isOverlayGranted: StateFlow<Boolean> = _isOverlayGranted.asStateFlow()
@@ -29,10 +33,16 @@ class ScannerViewModel(
     private val _activeError = MutableStateFlow<ErrorType?>(null)
     val activeError: StateFlow<ErrorType?> = _activeError.asStateFlow()
 
-    private val _backendUrl = MutableStateFlow(repository.getBackendUrl())
-    val backendUrl: StateFlow<String> = _backendUrl.asStateFlow()
-
     init {
+        refreshBackendStatus()
+    }
+
+    fun initPersistence(context: Context) {
+        repository.initPersistence(context)
+        refreshBackendStatus()
+    }
+
+    fun refreshBackendStatus() {
         viewModelScope.launch {
             repository.checkBackendHealth()
         }
@@ -40,7 +50,6 @@ class ScannerViewModel(
 
     fun updateBackendUrl(url: String) {
         repository.setBackendUrl(url)
-        _backendUrl.value = url
         viewModelScope.launch {
             repository.checkBackendHealth()
         }

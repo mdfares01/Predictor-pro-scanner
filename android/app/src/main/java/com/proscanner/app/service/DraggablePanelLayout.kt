@@ -25,11 +25,12 @@ class DraggablePanelLayout(
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
     private val density = context.resources.displayMetrics.density
 
-    // Header drag zone: strictly top 52dp, excluding the rightmost 120dp containing the 48dp Minimize & Close buttons.
-    // The Scan/Settings buttons start at ~78dp from the top, so this zone is completely isolated from all action buttons.
-    private val maxHeaderYPx = (52 * density).toInt()
+    // Header drag zone: top 64dp (16dp top padding + 48dp header height), excluding the rightmost 120dp containing the 48dp Minimize & Close buttons.
+    // The Scan/Settings buttons start at ~78dp from the top, keeping all action buttons isolated from dragging.
+    private val maxHeaderYPx = (64 * density).toInt()
     private val controlsWidthPx = (120 * density).toInt()
 
+    private var activePointerId = MotionEvent.INVALID_POINTER_ID
     private var initialTouchRawX = 0f
     private var initialTouchRawY = 0f
     private var initialWindowX = 0
@@ -47,9 +48,16 @@ class DraggablePanelLayout(
         return inVerticalBounds && inHorizontalBounds
     }
 
+    private fun resetDragState() {
+        isDragging = false
+        touchStartedInHeaderDragZone = false
+        activePointerId = MotionEvent.INVALID_POINTER_ID
+    }
+
     override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
         when (ev.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                activePointerId = ev.getPointerId(0)
                 initialTouchRawX = ev.rawX
                 initialTouchRawY = ev.rawY
                 initialWindowX = panelParams.x
@@ -60,7 +68,7 @@ class DraggablePanelLayout(
                 return false
             }
             MotionEvent.ACTION_MOVE -> {
-                if (touchStartedInHeaderDragZone && !isDragging) {
+                if (touchStartedInHeaderDragZone && !isDragging && activePointerId != MotionEvent.INVALID_POINTER_ID) {
                     val dx = Math.abs(ev.rawX - initialTouchRawX)
                     val dy = Math.abs(ev.rawY - initialTouchRawY)
                     if (dx > touchSlop || dy > touchSlop) {
@@ -72,8 +80,7 @@ class DraggablePanelLayout(
                 }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                isDragging = false
-                touchStartedInHeaderDragZone = false
+                resetDragState()
             }
         }
         return isDragging
@@ -82,6 +89,7 @@ class DraggablePanelLayout(
     override fun onTouchEvent(ev: MotionEvent): Boolean {
         when (ev.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                activePointerId = ev.getPointerId(0)
                 initialTouchRawX = ev.rawX
                 initialTouchRawY = ev.rawY
                 initialWindowX = panelParams.x
@@ -102,9 +110,9 @@ class DraggablePanelLayout(
                     if (isDragging) {
                         val metrics = resources.displayMetrics
                         val panelWidth = if (width > 0) width else panelParams.width
-                        val panelHeight = if (height > 0) height else panelParams.height
+                        val panelHeight = if (height > 0) height else (220 * density).toInt()
                         val maxX = (metrics.widthPixels - panelWidth).coerceAtLeast(0)
-                        val maxY = (metrics.heightPixels - panelHeight.coerceAtLeast(120)).coerceAtLeast(0)
+                        val maxY = (metrics.heightPixels - panelHeight).coerceAtLeast(0)
                         panelParams.x = (initialWindowX + dx.toInt()).coerceIn(0, maxX)
                         panelParams.y = (initialWindowY + dy.toInt()).coerceIn(0, maxY)
                         try {
@@ -118,10 +126,17 @@ class DraggablePanelLayout(
                     }
                 }
             }
+            MotionEvent.ACTION_POINTER_UP -> {
+                val pointerIndex = ev.actionIndex
+                if (ev.getPointerId(pointerIndex) == activePointerId) {
+                    val wasDragging = isDragging
+                    resetDragState()
+                    if (wasDragging) return true
+                }
+            }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 val wasDragging = isDragging
-                isDragging = false
-                touchStartedInHeaderDragZone = false
+                resetDragState()
                 if (wasDragging) {
                     return true
                 }

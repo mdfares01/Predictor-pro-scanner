@@ -44,7 +44,7 @@ class ScreenCaptureManager(private val context: Context) {
             val bounds = metrics.bounds
             screenWidth = bounds.width().coerceAtLeast(480)
             screenHeight = bounds.height().coerceAtLeast(800)
-            screenDensity = context.resources.configuration.densityDpi
+            screenDensity = context.resources.displayMetrics.densityDpi.coerceAtLeast(DisplayMetrics.DENSITY_DEFAULT)
         } else {
             val metrics = DisplayMetrics()
             @Suppress("DEPRECATION")
@@ -55,26 +55,27 @@ class ScreenCaptureManager(private val context: Context) {
         }
     }
 
-    suspend fun captureScreenBase64(resultCode: Int, data: Intent): String? = withContext(Dispatchers.IO) {
+    suspend fun captureScreenBase64(resultCode: Int, data: Intent): Result<String> = withContext(Dispatchers.IO) {
         updateScreenDimensions()
         val projectionManager =
             context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as? MediaProjectionManager
         if (projectionManager == null) {
             Log.e(TAG, "MediaProjectionManager is null")
-            return@withContext null
+            return@withContext Result.failure(IllegalStateException("MediaProjection service is unavailable on this device."))
         }
 
         var mediaProjection: MediaProjection? = null
         var virtualDisplay: VirtualDisplay? = null
         var imageReader: ImageReader? = null
         var projectionCallback: MediaProjection.Callback? = null
+        @Volatile var projectionStopped = false
 
         try {
             Log.d(TAG, "[ScreenCapture] Calling projectionManager.getMediaProjection(resultCode, data)...")
             mediaProjection = projectionManager.getMediaProjection(resultCode, data)
             if (mediaProjection == null) {
                 Log.e(TAG, "[ScreenCapture] projectionManager.getMediaProjection returned null!")
-                return@withContext null
+                return@withContext Result.failure(SecurityException("Screen capture permission was denied or expired. Please grant capture permission again."))
             }
             Log.i(TAG, "[ScreenCapture] getMediaProjection succeeded, registering callback...")
 
@@ -82,6 +83,7 @@ class ScreenCaptureManager(private val context: Context) {
             val mainHandler = Handler(Looper.getMainLooper())
             projectionCallback = object : MediaProjection.Callback() {
                 override fun onStop() {
+                    projectionStopped = true
                     Log.i(TAG, "[ScreenCapture] MediaProjection session stopped by system or callback")
                 }
             }
@@ -105,27 +107,38 @@ class ScreenCaptureManager(private val context: Context) {
                 null,
                 null
             )
+            if (virtualDisplay == null) {
+                return@withContext Result.failure(IllegalStateException("Failed to create VirtualDisplay for screen capture."))
+            }
             Log.i(TAG, "[ScreenCapture] VirtualDisplay created successfully")
 
             // Short frame render pause for surface buffer swap
-            delay(350)
+            delay(280)
 
             var acquiredImage: Image? = null
-            for (attempt in 1..3) {
+            for (attempt in 1..6) {
+                if (projectionStopped) {
+                    return@withContext Result.failure(IllegalStateException("Screen capture session was stopped before a frame could be captured."))
+                }
                 acquiredImage = imageReader.acquireLatestImage()
                 if (acquiredImage != null) break
-                delay(150)
+                delay(120)
             }
 
             if (acquiredImage != null) {
+                var bitmap: Bitmap? = null
+                var cropped: Bitmap? = null
                 try {
                     val planes = acquiredImage.planes
                     val buffer: ByteBuffer = planes[0].buffer
                     val pixelStride = planes[0].pixelStride
                     val rowStride = planes[0].rowStride
-                    val rowPadding = rowStride - pixelStride * screenWidth
+                    if (pixelStride <= 0) {
+                        return@withContext Result.failure(IllegalStateException("Invalid image buffer pixel stride received during capture."))
+                    }
+                    val rowPadding = (rowStride - pixelStride * screenWidth).coerceAtLeast(0)
 
-                    val bitmap = Bitmap.createBitmap(
+                    bitmap = Bitmap.createBitmap(
                         screenWidth + rowPadding / pixelStride,
                         screenHeight,
                         Bitmap.Config.ARGB_8888
@@ -133,36 +146,40 @@ class ScreenCaptureManager(private val context: Context) {
                     bitmap.copyPixelsFromBuffer(buffer)
 
                     // Crop to exact screen dimensions
-                    val cropped = Bitmap.createBitmap(bitmap, 0, 0, screenWidth, screenHeight)
+                    cropped = Bitmap.createBitmap(bitmap, 0, 0, screenWidth, screenHeight)
 
-                    // Compress to JPEG for high-efficiency Gemini multimodal transmission
+                    // Compress to JPEG for multimodal transmission
                     val outStream = ByteArrayOutputStream()
-                    cropped.compress(Bitmap.CompressFormat.JPEG, 85, outStream)
+                    val compressedOk = cropped.compress(Bitmap.CompressFormat.JPEG, 85, outStream)
                     val byteArray = outStream.toByteArray()
-
-                    if (bitmap != cropped) {
-                        bitmap.recycle()
+                    if (!compressedOk || byteArray.isEmpty()) {
+                        return@withContext Result.failure(IllegalStateException("Captured screen frame could not be encoded."))
                     }
-                    cropped.recycle()
 
                     Log.i(TAG, "[ScreenCapture] Screenshot captured successfully: ${byteArray.size} bytes encoded")
-                    Base64.encodeToString(byteArray, Base64.NO_WRAP)
+                    Result.success(Base64.encodeToString(byteArray, Base64.NO_WRAP))
                 } finally {
+                    if (cropped != null && cropped != bitmap && !cropped.isRecycled) {
+                        cropped.recycle()
+                    }
+                    if (bitmap != null && !bitmap.isRecycled) {
+                        bitmap.recycle()
+                    }
                     acquiredImage.close()
                 }
             } else {
-                Log.e(TAG, "[ScreenCapture] No image frame acquired from ImageReader after 3 attempts")
-                null
+                Log.e(TAG, "[ScreenCapture] No image frame acquired from ImageReader after 6 attempts")
+                Result.failure(IllegalStateException("No screen frame was produced before capture timed out. Please try again."))
             }
         } catch (e: SecurityException) {
             Log.e(TAG, "[ScreenCapture] SecurityException during screen capture: ${e.message}", e)
-            null
+            Result.failure(SecurityException("Screen capture permission denied or revoked by Android (${e.localizedMessage ?: "SecurityException"})."))
         } catch (e: IllegalStateException) {
             Log.e(TAG, "[ScreenCapture] IllegalStateException during screen capture: ${e.message}", e)
-            null
+            Result.failure(IllegalStateException("Screen capture session error: ${e.localizedMessage ?: "IllegalStateException"}"))
         } catch (e: Exception) {
             Log.e(TAG, "[ScreenCapture] Unexpected exception during screen capture: ${e.message}", e)
-            null
+            Result.failure(IllegalStateException("Screen capture failed: ${e.localizedMessage ?: e.javaClass.simpleName}"))
         } finally {
             Log.d(TAG, "[ScreenCapture] Cleaning up capture resources...")
             try {

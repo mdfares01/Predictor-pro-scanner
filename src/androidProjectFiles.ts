@@ -146,7 +146,7 @@ android {
         buildConfigField(
             "String",
             "DEFAULT_BACKEND_URL",
-            "\\"https://ais-dev-msuwv3xuyna6ensh5lmjdf-987225211015.asia-southeast1.run.app\\""
+            "\"\""
         )
     }
 
@@ -503,8 +503,8 @@ fun ResultCardView(
     description: 'English localization strings for all screens and error dialogs',
     content: `<resources>
     <string name="app_name">Floating PRO Scanner</string>
-    <string name="tagline">AI Powered Trading Analysis</string>
-    <string name="sub_tagline">Smart • Fast • Accurate</string>
+    <string name="tagline">Educational AI Chart Analysis</string>
+    <string name="sub_tagline">Observe • Learn • Analyze</string>
     <string name="start_scanner">START SCANNER</string>
     <string name="pro_scanner">PRO SCANNER</string>
     <string name="signal_ready">SIGNAL READY</string>
@@ -520,8 +520,8 @@ fun ResultCardView(
     description: 'Bilingual Bangla localization strings for all screens and error dialogs',
     content: `<resources>
     <string name="app_name">ফ্লোটিং প্রো স্ক্যানার</string>
-    <string name="tagline">এআই চালিত ট্রেডিং বিশ্লেষণ</string>
-    <string name="sub_tagline">স্মার্ট • দ্রুত • নির্ভুল</string>
+    <string name="tagline">শিক্ষামূলক এআই চার্ট বিশ্লেষণ</string>
+    <string name="sub_tagline">পর্যবেক্ষণ • শিক্ষা • বিশ্লেষণ</string>
     <string name="start_scanner">স্ক্যানার চালু করুন</string>
     <string name="pro_scanner">প্রো স্ক্যানার</string>
     <string name="signal_ready">সিগন্যাল প্রস্তুত</string>

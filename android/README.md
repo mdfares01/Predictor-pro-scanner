@@ -1,6 +1,6 @@
 # Floating PRO Scanner — Native Android Project
 
-A complete, production-grade native Android application built with **Kotlin** and **Jetpack Compose**. It provides an AI-powered candlestick chart scanner with a floating draggable overlay bubble over third-party trading apps (such as Quotex demo charts), real-time radar scanning animation, MediaProjection user-consented screen capture, and secure backend Gemini vision analysis.
+A complete, production-grade native Android application built with **Kotlin** and **Jetpack Compose**. It provides an educational AI-powered candlestick chart scanner with a floating draggable overlay bubble over chart-learning apps, real-time radar scanning animation, MediaProjection user-consented screen capture, and secure backend Gemini vision analysis.
 
 ---
 
@@ -86,7 +86,7 @@ Once installed on your phone:
    - Android will open system settings. Toggle **Allow display over other apps** to ON.
 3. Tap **"START SCANNER"**:
    - The circular glowing **PRO** bubble appears floating on your screen IMMEDIATELY! (No screen-recording prompt needed upfront).
-4. Open your preferred trading or chart application (e.g. Quotex demo account).
+4. Open any educational candlestick chart view or market study application.
 5. Move the floating bubble anywhere you like. Tap it to expand the scan panel.
 6. Tap **"Scan"**:
    - Android prompts: *"Start recording or casting with Floating PRO Scanner?"* Tap **"Start now"**.

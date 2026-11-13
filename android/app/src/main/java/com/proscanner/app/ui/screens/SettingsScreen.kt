@@ -54,12 +54,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.proscanner.app.R
+import com.proscanner.app.data.api.GeminiAnalysisService
 import com.proscanner.app.ui.theme.BorderSubtle
 import com.proscanner.app.ui.theme.CardBackground
 import com.proscanner.app.ui.theme.DarkBackground
 import com.proscanner.app.ui.theme.NeonGreen
 import com.proscanner.app.ui.theme.PitchBlack
 import com.proscanner.app.ui.theme.SignalDown
+import com.proscanner.app.ui.theme.SignalNeutral
 import com.proscanner.app.ui.theme.TextMuted
 import com.proscanner.app.ui.theme.TextPrimary
 import com.proscanner.app.ui.theme.TextSecondary
@@ -75,9 +77,12 @@ fun SettingsScreen(
     isOverlayGranted: Boolean,
     isCaptureGranted: Boolean,
     isBackendConnected: Boolean,
+    isBackendConfigured: Boolean = false,
+    backendStatusDetail: String? = null,
     currentLanguage: String,
     backendUrl: String = "",
     onUpdateBackendUrl: (String) -> Unit = {},
+    onRefreshBackendStatus: () -> Unit = {},
     onGrantOverlay: () -> Unit,
     onGrantCapture: () -> Unit,
     onToggleLanguage: () -> Unit,
@@ -86,6 +91,23 @@ fun SettingsScreen(
     var notificationsEnabled by remember { mutableStateOf(true) }
     var showServerDialog by remember { mutableStateOf(false) }
     var inputUrl by remember(backendUrl) { mutableStateOf(backendUrl) }
+    var urlError by remember { mutableStateOf<String?>(null) }
+
+    val statusBgColor = when {
+        !isBackendConfigured -> Color(0xFF2D220D)
+        isBackendConnected -> Color(0xFF0E3023)
+        else -> Color(0xFF331618)
+    }
+    val statusTextColor = when {
+        !isBackendConfigured -> SignalNeutral
+        isBackendConnected -> NeonGreen
+        else -> SignalDown
+    }
+    val statusText = when {
+        !isBackendConfigured -> stringResource(R.string.backend_not_configured)
+        isBackendConnected -> "✦ ${stringResource(R.string.connected)}"
+        else -> stringResource(R.string.offline)
+    }
 
     Scaffold(
         containerColor = DarkBackground,
@@ -186,15 +208,19 @@ fun SettingsScreen(
                         .background(CardBackground)
                         .border(1.dp, Color(0xFF1E2830), RoundedCornerShape(16.dp))
                 ) {
-                    // Gemini AI Connection
+                    // Gemini AI Connection (synchronized with real /api/health state)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .clickable { onRefreshBackendStatus() }
                             .padding(14.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f).padding(end = 8.dp)
+                        ) {
                             Icon(
                                 imageVector = Icons.Default.Security,
                                 contentDescription = null,
@@ -212,12 +238,12 @@ fun SettingsScreen(
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(12.dp))
-                                .background(Color(0xFF0E3023))
+                                .background(statusBgColor)
                                 .padding(horizontal = 8.dp, vertical = 4.dp)
                         ) {
                             Text(
-                                text = "✦ ${stringResource(R.string.connected)}",
-                                color = NeonGreen,
+                                text = statusText,
+                                color = statusTextColor,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.SemiBold
                             )
@@ -235,12 +261,19 @@ fun SettingsScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { showServerDialog = true }
+                            .clickable {
+                                inputUrl = backendUrl
+                                urlError = null
+                                showServerDialog = true
+                            }
                             .padding(14.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f).padding(end = 8.dp)
+                        ) {
                             Icon(
                                 imageVector = Icons.Default.Public,
                                 contentDescription = null,
@@ -256,23 +289,32 @@ fun SettingsScreen(
                                     fontWeight = FontWeight.Medium
                                 )
                                 Text(
-                                    text = backendUrl.ifBlank { "Tap to configure endpoint" },
-                                    color = TextMuted,
+                                    text = backendUrl.ifBlank { stringResource(R.string.backend_deployment_required) },
+                                    color = if (backendUrl.isBlank()) SignalNeutral else TextMuted,
                                     fontSize = 10.sp,
                                     maxLines = 1,
                                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                                 )
+                                if (!isBackendConnected && isBackendConfigured && !backendStatusDetail.isNullOrBlank()) {
+                                    Text(
+                                        text = backendStatusDetail,
+                                        color = SignalDown,
+                                        fontSize = 10.sp,
+                                        maxLines = 2,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                    )
+                                }
                             }
                         }
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(12.dp))
-                                .background(if (isBackendConnected) Color(0xFF0E3023) else Color(0xFF331618))
+                                .background(statusBgColor)
                                 .padding(horizontal = 8.dp, vertical = 4.dp)
                         ) {
                             Text(
-                                text = if (isBackendConnected) "✦ Online" else "Offline",
-                                color = if (isBackendConnected) NeonGreen else SignalDown,
+                                text = statusText,
+                                color = statusTextColor,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.SemiBold
                             )
@@ -295,15 +337,20 @@ fun SettingsScreen(
                         text = {
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text(
-                                    text = "Enter your deployed backend server URL that securely signs and queries Gemini without exposing your API key.",
+                                    text = "A real public HTTPS backend deployment is required before connection can succeed. Your Gemini API key remains on the server and is never stored in the APK.",
                                     color = TextSecondary,
                                     fontSize = 12.sp
                                 )
                                 OutlinedTextField(
                                     value = inputUrl,
-                                    onValueChange = { inputUrl = it },
-                                    label = { Text("Backend URL") },
+                                    onValueChange = {
+                                        inputUrl = it
+                                        urlError = null
+                                    },
+                                    label = { Text("Public HTTPS Backend URL") },
+                                    placeholder = { Text("https://your-backend.example.com") },
                                     singleLine = true,
+                                    isError = urlError != null,
                                     colors = OutlinedTextFieldDefaults.colors(
                                         focusedBorderColor = NeonGreen,
                                         unfocusedBorderColor = Color(0xFF1E2830),
@@ -311,9 +358,16 @@ fun SettingsScreen(
                                         unfocusedTextColor = TextPrimary
                                     )
                                 )
+                                if (urlError != null) {
+                                    Text(
+                                        text = urlError!!,
+                                        color = SignalDown,
+                                        fontSize = 11.sp
+                                    )
+                                }
 
                                 Text(
-                                    text = "Quick Presets:",
+                                    text = "Local Testing Presets:",
                                     color = TextMuted,
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.SemiBold
@@ -324,7 +378,10 @@ fun SettingsScreen(
                                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
                                     Button(
-                                        onClick = { inputUrl = "http://10.0.2.2:3000" },
+                                        onClick = {
+                                            inputUrl = "http://10.0.2.2:3000"
+                                            urlError = null
+                                        },
                                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16222A)),
                                         shape = RoundedCornerShape(8.dp),
                                         modifier = Modifier.weight(1f)
@@ -332,7 +389,10 @@ fun SettingsScreen(
                                         Text("Emulator", color = TextPrimary, fontSize = 10.sp)
                                     }
                                     Button(
-                                        onClick = { inputUrl = "http://127.0.0.1:3000" },
+                                        onClick = {
+                                            inputUrl = "http://127.0.0.1:3000"
+                                            urlError = null
+                                        },
                                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16222A)),
                                         shape = RoundedCornerShape(8.dp),
                                         modifier = Modifier.weight(1f)
@@ -345,12 +405,27 @@ fun SettingsScreen(
                         confirmButton = {
                             Button(
                                 onClick = {
-                                    onUpdateBackendUrl(inputUrl.trim())
-                                    showServerDialog = false
+                                    val trimmed = GeminiAnalysisService.normalizeUrl(inputUrl)
+                                    when {
+                                        trimmed.isEmpty() -> {
+                                            onUpdateBackendUrl("")
+                                            showServerDialog = false
+                                        }
+                                        GeminiAnalysisService.isDevelopmentPreviewUrl(trimmed) -> {
+                                            urlError = "Development-preview URLs (ais-dev-...) cannot be used. Enter your deployed HTTPS backend URL."
+                                        }
+                                        !GeminiAnalysisService.isValidBackendUrl(trimmed) -> {
+                                            urlError = "Enter a valid public https:// backend URL (or local 10.0.2.2 / 127.0.0.1 for dev)."
+                                        }
+                                        else -> {
+                                            onUpdateBackendUrl(trimmed)
+                                            showServerDialog = false
+                                        }
+                                    }
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = NeonGreen)
                             ) {
-                                Text("Save & Connect", color = PitchBlack, fontWeight = FontWeight.Bold)
+                                Text("Save & Test", color = PitchBlack, fontWeight = FontWeight.Bold)
                             }
                         },
                         dismissButton = {

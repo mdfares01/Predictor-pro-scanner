@@ -41,6 +41,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        viewModel.initPersistence(applicationContext)
 
         val destination = intent.getStringExtra("destination")
         if (!destination.isNullOrBlank()) {
@@ -71,6 +72,7 @@ class MainActivity : ComponentActivity() {
         } else {
             viewModel.setOverlayGranted(true)
         }
+        viewModel.refreshBackendStatus()
     }
 }
 
@@ -85,6 +87,8 @@ fun MainAppNavHost(
     val isOverlayGranted by viewModel.isOverlayGranted.collectAsState()
     val isCaptureGranted by viewModel.isCaptureGranted.collectAsState()
     val isBackendOnline by viewModel.isBackendConnected.collectAsState()
+    val isBackendConfigured by viewModel.isBackendConfigured.collectAsState()
+    val backendStatusDetail by viewModel.backendStatusDetail.collectAsState()
     val recentScans by viewModel.recentScans.collectAsState()
     val currentLang by viewModel.currentLanguage.collectAsState()
     val activeError by viewModel.activeError.collectAsState()
@@ -129,6 +133,7 @@ fun MainAppNavHost(
             Toast.makeText(context, "Screen capture permission granted", Toast.LENGTH_SHORT).show()
         } else {
             viewModel.setCaptureGranted(false)
+            Toast.makeText(context, context.getString(R.string.error_capture_cancelled), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -224,6 +229,8 @@ fun MainAppNavHost(
                 isOverlayGranted = isOverlayGranted,
                 isCaptureGranted = isCaptureGranted,
                 isBackendOnline = isBackendOnline,
+                isBackendConfigured = isBackendConfigured,
+                backendStatusDetail = backendStatusDetail,
                 recentScans = recentScans,
                 onStartScannerClick = {
                     startFloatingBubbleOverlay()
@@ -231,7 +238,8 @@ fun MainAppNavHost(
                 onRequestOverlayClick = { requestOverlay() },
                 onRequestCaptureClick = { requestScreenCaptureConsent() },
                 onNavigateSettings = { navController.navigate("settings") },
-                onNavigateHistory = { navController.navigate("history") }
+                onNavigateHistory = { navController.navigate("history") },
+                onBackendCardClick = { navController.navigate("settings") }
             )
         }
 
@@ -240,9 +248,12 @@ fun MainAppNavHost(
                 isOverlayGranted = isOverlayGranted,
                 isCaptureGranted = isCaptureGranted,
                 isBackendConnected = isBackendOnline,
+                isBackendConfigured = isBackendConfigured,
+                backendStatusDetail = backendStatusDetail,
                 currentLanguage = currentLang,
                 backendUrl = backendUrl,
                 onUpdateBackendUrl = { viewModel.updateBackendUrl(it) },
+                onRefreshBackendStatus = { viewModel.refreshBackendStatus() },
                 onGrantOverlay = { requestOverlay() },
                 onGrantCapture = { requestScreenCaptureConsent() },
                 onToggleLanguage = { viewModel.toggleLanguage() },

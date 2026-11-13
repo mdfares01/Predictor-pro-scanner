@@ -24,7 +24,7 @@ android {
         buildConfigField(
             "String",
             "DEFAULT_BACKEND_URL",
-            "\"https://ais-dev-msuwv3xuyna6ensh5lmjdf-987225211015.asia-southeast1.run.app\""
+            "\"\""
         )
     }
 

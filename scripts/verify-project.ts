@@ -447,6 +447,124 @@ async function runVerification() {
       'Gradle Build',
       'Full Android 14, 15, and 16 API level compatibility'
     );
+    assert(
+      !appGradleContent.includes('ais-dev-') && appGradleContent.includes('DEFAULT_BACKEND_URL'),
+      'DEFAULT_BACKEND_URL does not hardcode Google AI Studio preview URL',
+      'Backend Config',
+      'Requires explicit public HTTPS backend configuration'
+    );
+  }
+
+  // Test 12: Data Integrity — No Fake Scan History & Initial Disconnected State
+  const repoPath = path.join(rootDir, 'android/app/src/main/java/com/proscanner/app/data/repository/ScannerRepository.kt');
+  if (fs.existsSync(repoPath)) {
+    const repoContent = fs.readFileSync(repoPath, 'utf-8');
+    assert(
+      repoContent.includes('MutableStateFlow<List<ScanResult>>(emptyList())') &&
+      !repoContent.includes('"EUR/USD"') &&
+      !repoContent.includes('"GBP/CHF"') &&
+      !repoContent.includes('"USD/JPY"'),
+      'ScannerRepository initializes recentScans with emptyList() (no fake samples)',
+      'Data Integrity',
+      'Only genuine completed analyses are stored'
+    );
+    assert(
+      repoContent.includes('_isBackendConnected = MutableStateFlow(false)') &&
+      repoContent.includes('checkHealthDetailed()'),
+      'ScannerRepository initializes isBackendConnected to false and verifies JSON health',
+      'Data Integrity',
+      'Never assumes connected without a verified /api/health JSON response'
+    );
+    assert(
+      repoContent.includes('val shared: ScannerRepository') && repoContent.includes('initPersistence'),
+      'ScannerRepository provides shared persisted state across UI and Service',
+      'Data Integrity',
+      'Home, Settings, and FloatingScannerService stay synchronized'
+    );
+  }
+
+  // Test 13: Synchronized Home & Settings Backend Status (No Hardcoded Connected Badge)
+  const homePath = path.join(rootDir, 'android/app/src/main/java/com/proscanner/app/ui/screens/HomeScreen.kt');
+  const settingsPath = path.join(rootDir, 'android/app/src/main/java/com/proscanner/app/ui/screens/SettingsScreen.kt');
+  if (fs.existsSync(homePath) && fs.existsSync(settingsPath)) {
+    const homeContent = fs.readFileSync(homePath, 'utf-8');
+    const settingsContent = fs.readFileSync(settingsPath, 'utf-8');
+    assert(
+      homeContent.includes('isBackendConfigured') &&
+      homeContent.includes('R.string.backend_not_configured') &&
+      homeContent.includes('R.string.no_recent_scans'),
+      'HomeScreen displays Backend Not Configured and empty recent scans state honestly',
+      'Status Sync',
+      'No false Connected or fake history display on Home'
+    );
+    assert(
+      settingsContent.includes('isBackendConfigured') &&
+      settingsContent.includes('text = statusText') &&
+      !settingsContent.includes('text = "✦ ${stringResource(R.string.connected)}"'),
+      'SettingsScreen removes hardcoded Connected badge and syncs both rows with real status',
+      'Status Sync',
+      'Gemini AI Connection and Backend Server match Home status'
+    );
+  }
+
+  // Test 14: Backend URL Validation & Strict JSON Health Check
+  if (fs.existsSync(apiServicePath)) {
+    const apiContent = fs.readFileSync(apiServicePath, 'utf-8');
+    assert(
+      apiContent.includes('isDevelopmentPreviewUrl') &&
+      apiContent.includes('isValidPublicHttpsUrl') &&
+      apiContent.includes('checkHealthDetailed') &&
+      apiContent.includes('parseToJsonElement(body)'),
+      'GeminiAnalysisService blocks ais-dev URLs and strictly parses /api/health JSON',
+      'Backend Config',
+      'Rejects HTTP 302 redirects, HTML, timeouts, and invalid JSON'
+    );
+  }
+
+  // Test 15: Honest Screen Capture Result & Cancellation Handling
+  if (fs.existsSync(capturePath) && fs.existsSync(consentPath) && fs.existsSync(servicePath)) {
+    const captureContent = fs.readFileSync(capturePath, 'utf-8');
+    const consentContent = fs.readFileSync(consentPath, 'utf-8');
+    const serviceContent = fs.readFileSync(servicePath, 'utf-8');
+    assert(
+      captureContent.includes('captureScreenBase64(resultCode: Int, data: Intent): Result<String>') &&
+      captureContent.includes('projectionStopped') &&
+      captureContent.includes('Result.failure'),
+      'ScreenCaptureManager returns explicit Result<String> and handles MediaProjection stop',
+      'Screen Capture',
+      'Never reports failed or stopped sessions as success'
+    );
+    assert(
+      consentContent.includes('resultDispatched') &&
+      consentContent.includes('ACTION_CAPTURE_FAILED') &&
+      consentContent.includes('EXTRA_ERROR_MESSAGE'),
+      'CaptureConsentActivity tracks resultDispatched and reports failures/cancellations',
+      'Screen Capture',
+      'Prevents stuck isScanning state when consent is dismissed or fails'
+    );
+    assert(
+      serviceContent.includes('repository.isBackendConfigured()') &&
+      serviceContent.includes('Activity.RESULT_OK') &&
+      serviceContent.includes('ACTION_CAPTURE_FAILED'),
+      'FloatingScannerService gates scans on valid backend config and handles capture outcomes',
+      'Screen Capture',
+      'Reports backend unconfigured, permission denial, and cancellation honestly'
+    );
+    assert(
+      serviceContent.includes('onConfigurationChanged') &&
+      serviceContent.includes('DisposeOnDetachedFromWindow') &&
+      serviceContent.includes('removeViewImmediate') &&
+      serviceContent.includes('if (isExpanded || panelView?.isAttachedToWindow == true)'),
+      'FloatingScannerService prevents stale ComposeView reuse, duplicate overlays, and orientation clipping',
+      'Android 16 Overlay',
+      'Clean lifecycle, fresh ComposeView windows, and config clamping'
+    );
+    assert(
+      captureContent.includes('coerceAtLeast(DisplayMetrics.DENSITY_DEFAULT)'),
+      'ScreenCaptureManager guards screenDensity against 0 on VirtualDisplay creation',
+      'Screen Capture',
+      'Prevents IllegalArgumentException on API 30-36 displays'
+    );
   }
 
   // Print Summary Table
