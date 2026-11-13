@@ -22,6 +22,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
+import java.util.concurrent.atomic.AtomicBoolean
 
 class ScreenCaptureManager(private val context: Context) {
 
@@ -68,7 +69,7 @@ class ScreenCaptureManager(private val context: Context) {
         var virtualDisplay: VirtualDisplay? = null
         var imageReader: ImageReader? = null
         var projectionCallback: MediaProjection.Callback? = null
-        @Volatile var projectionStopped = false
+        val projectionStopped = AtomicBoolean(false)
 
         try {
             Log.d(TAG, "[ScreenCapture] Calling projectionManager.getMediaProjection(resultCode, data)...")
@@ -83,7 +84,7 @@ class ScreenCaptureManager(private val context: Context) {
             val mainHandler = Handler(Looper.getMainLooper())
             projectionCallback = object : MediaProjection.Callback() {
                 override fun onStop() {
-                    projectionStopped = true
+                    projectionStopped.set(true)
                     Log.i(TAG, "[ScreenCapture] MediaProjection session stopped by system or callback")
                 }
             }
@@ -117,7 +118,7 @@ class ScreenCaptureManager(private val context: Context) {
 
             var acquiredImage: Image? = null
             for (attempt in 1..6) {
-                if (projectionStopped) {
+                if (projectionStopped.get()) {
                     return@withContext Result.failure(IllegalStateException("Screen capture session was stopped before a frame could be captured."))
                 }
                 acquiredImage = imageReader.acquireLatestImage()
